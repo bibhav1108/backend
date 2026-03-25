@@ -47,33 +47,38 @@ sequenceDiagram
 ## 🟡 Version 1.5: Trust & Track (Enhanced Manual)
 *Goal: Multi-NGO isolation and basic volunteer accountability data.*
 
-### 🗺️ Operational Flow (Isolated & Accountability Checks)
+### 🗺️ Operational Flow (Marketplace & NGO Isolation)
 ```mermaid
 sequenceDiagram
+    actor Donor
     actor NGO_Admin
     actor Coordinator
     actor Backend
     actor Volunteer
 
-    NGO_Admin->>Backend: 🔑 Register Organization (Isolated namespace)
-    Volunteer->>Backend: 📝 Registers with Org UID
+    NGO_Admin->>Backend: 🔑 Register NGO + First Admin (Atomic)
+    Donor->>Backend: 🏨 Alert surplus/need (Global Marketplace)
     
-    Coordinator->>Backend: 🔍 Views Volunteer Dashboard
-    Backend->>Coordinator: 📊 Shows [Completions/No-Shows/Flag]
-    Coordinator->>Backend: ✍️ Sets "Verified" Flag (Manual ID verification)
+    Note over Coordinator, Backend: First-Come-First-Serve
+    Coordinator->>Backend: 🖐️ Claims Global Need for own NGO
+    Backend->>Backend: 🔒 Assigns org_id & Isolates record
     
-    Coordinator->>Backend: 📝 Creates Need (filtered by org_id)
-    Backend->>Backend: 🔒 Isolates needs to current NGO only
+    Coordinator->>Backend: 🔍 Views Volunteer Dashboard (Stats-Aware)
+    Backend->>Coordinator: 📊 Shows [Completions/No-Shows]
+    Coordinator->>Backend: 🛡️ Manages Trust Tier (Verified Flags)
+    
+    Coordinator->>Backend: 📝 Creates Private Need (Org-scoped)
 ```
 
 ### 🧩 Subparts & Components: V1.5
 | Subpart | Component | Details |
 | :--- | :--- | :--- |
-| **Multi-NGO Isolation** | Org Scoping | Every query includes `org_id` filtering. Data NEVER crosses NGO boundaries. |
-| **Volunteer Trust Flag** | Verified Boolean | Simple checklist verification flag editable by coordinator notes file. |
-| **Stats tracking** | Metrics | Tracks `completions_count`, `no_shows_count`, and `last_active_at` on volunteer structure profiles. |
-| **Dashboard Analytics** | History Dashboard | Visual lists of average response times per need type. |
-| **Resource Tracking** | Simple Quantities | List lookup tracking items: food packets, kits, water canisters. |
+| **Onboarding** | NGO Registration | Atomic `POST /register` to create Org + Creator. |
+| **Marketplace** | Claiming Engine | FCFS mechanism for global donation alerts. |
+| **Data Isolation** | Multi-Tenancy | Every query strictly filtered by `org_id`. |
+| **Volunteer Trust** | 3-Tier System | `UNVERIFIED` -> `ID_VERIFIED` -> `FIELD_VERIFIED`. |
+| **Stats tracking** | Auto-Stats | Automatic `completions` and `no_shows` counters. |
+| **Resource Ledger**| Inventory | NGO-scoped tracking for food, kits, and supplies. |
 
 ---
 
@@ -143,7 +148,6 @@ sequenceDiagram
 | Subpart | Component | Details |
 | :--- | :--- | :--- |
 | **AES Field Encryption** | At-Rest Protection | Client names, location trace details, phones stored encrypted. |
-| **3-Tier Trust system** | Tier pathways | Tier 1: Unverified; Tier 2: ID Verified (Call verification); Tier 3: Field Verified (Office visit logs). |
 | **Fatigue Score** | Allocation penalty | Formula `missions_today * 0.12 + hours_last_48 * 0.025`. Penalizes overload risks. |
 | **DPDPA 2023 Consent** | Opt-In Gate | Absolute enforcement flag preventing broadcast storage for non-opt-in accounts. |
 | **Data Minimization** | Automated Purge | Replaces point coordinate geometry into broad zone grids past 90-day validity filters. |
