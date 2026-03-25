@@ -118,6 +118,7 @@ class Dispatch(Base):
     otp_hash: Mapped[Optional[str]] = mapped_column(nullable=True)
     otp_used: Mapped[bool] = mapped_column(default=False)
     otp_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    otp_attempts: Mapped[int] = mapped_column(default=0)
     
     status: Mapped[DispatchStatus] = mapped_column(SQLEnum(DispatchStatus), default=DispatchStatus.SENT)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)

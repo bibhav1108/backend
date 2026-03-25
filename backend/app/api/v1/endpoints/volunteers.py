@@ -27,6 +27,25 @@ class VolunteerResponse(BaseModel):
 # --- Router ---
 router = APIRouter()
 
+@router.get("/", response_model=List[VolunteerResponse])
+async def list_volunteers(
+    org_id: Optional[int] = None,
+    whatsapp_active: Optional[bool] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List registered volunteers.
+    Supports filtering by org_id and activation status.
+    """
+    stmt = select(Volunteer)
+    if org_id is not None:
+        stmt = stmt.where(Volunteer.org_id == org_id)
+    if whatsapp_active is not None:
+        stmt = stmt.where(Volunteer.whatsapp_active == whatsapp_active)
+        
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
 @router.post("/", response_model=VolunteerResponse, status_code=status.HTTP_201_CREATED)
 async def register_volunteer(
     data: VolunteerCreate,

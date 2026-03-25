@@ -18,7 +18,6 @@ async def whatsapp_webhook(
     Handle incoming WhatsApp responses.
     Expects Twilio Form variables: From and Body
     """
-    # Twilio sends From as "whatsapp:+1234567890"
     clean_phone = From.replace("whatsapp:", "").strip()
     reply_text = Body.strip().upper()
 

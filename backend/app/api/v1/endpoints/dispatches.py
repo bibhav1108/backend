@@ -92,16 +92,38 @@ async def verify_dispatch_otp(
     if not dispatch:
         raise HTTPException(status_code=404, detail="Dispatch record not found")
 
+    # 1. Check if already locked/failed
+    if dispatch.otp_attempts >= 3:
+        dispatch.status = DispatchStatus.FAILED
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="OTP locked. Maximum attempts (3) exceeded. Mission aborted."
+        )
+
     if dispatch.otp_used:
         raise HTTPException(status_code=400, detail="OTP already used")
 
-    # Check expiration
+    # 2. Check expiration
     if dispatch.otp_expires_at and datetime.utcnow() > dispatch.otp_expires_at:
          raise HTTPException(status_code=400, detail="OTP expired (45 min limit)")
 
-    # Verify logic
+    # 3. Verify logic with attempt increment
+    if not dispatch.otp_hash:
+        raise HTTPException(status_code=400, detail="OTP has not been generated for this dispatch yet.")
+
     if not verify_otp(data.otp_code, dispatch.otp_hash):
-        raise HTTPException(status_code=401, detail="Invalid OTP code")
+        dispatch.otp_attempts += 1
+        await db.commit()
+        
+        remaining = 3 - dispatch.otp_attempts
+        detail = f"Invalid OTP code. {remaining} attempts remaining."
+        if remaining <= 0:
+            dispatch.status = DispatchStatus.FAILED
+            await db.commit()
+            detail = "Invalid OTP code. Maximum attempts exceeded. Mission aborted."
+            
+        raise HTTPException(status_code=401, detail=detail)
 
     # Success
     dispatch.otp_used = True
