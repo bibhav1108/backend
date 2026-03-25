@@ -15,6 +15,7 @@ from backend.app.api.v1.endpoints.needs import router as needs_router
 from backend.app.api.v1.endpoints.dispatches import router as dispatches_router
 from backend.app.api.v1.endpoints.auth import router as auth_router
 from backend.app.api.v1.endpoints.inventory import router as inventory_router
+from backend.app.api.v1.endpoints.organizations import router as organizations_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,6 +43,7 @@ app = FastAPI(
 
 # Include Routers
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(organizations_router, prefix="/api/v1/organizations", tags=["organizations"])
 app.include_router(webhooks_router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(volunteers_router, prefix="/api/v1/volunteers", tags=["volunteers"])
 app.include_router(needs_router, prefix="/api/v1/needs", tags=["needs"])

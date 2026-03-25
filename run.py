@@ -14,5 +14,5 @@ if __name__ == "__main__":
         "backend.app.main:app", 
         host="0.0.0.0", 
         port=8005,  # Use 8005 to avoid port collisions
-        reload=False  # Standard run
+        reload=True  # Auto-reload for dev
     )
