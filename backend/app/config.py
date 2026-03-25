@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "sahyog_setu"
+    DATABASE_URL: Optional[str] = None
 
     # Security Settings
     SECRET_KEY: str = "insecure_default_secret_key"
