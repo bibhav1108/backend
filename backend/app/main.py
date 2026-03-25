@@ -56,11 +56,11 @@ app.include_router(inventory_router, prefix="/api/v1/inventory", tags=["inventor
 async def root():
     return {
         "status": "healthy", 
-        "version": "1.0.0", 
+        "version": "1.5.0", 
         "message": "Welcome to Sahyog Setu API",
         "docs_url": "/docs"
     }
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "version": "1.0.0"}
+    return {"status": "healthy", "version": "1.5.0"}
