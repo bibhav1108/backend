@@ -13,11 +13,13 @@ from backend.app.api.v1.endpoints.webhooks import router as webhooks_router
 from backend.app.api.v1.endpoints.volunteers import router as volunteers_router
 from backend.app.api.v1.endpoints.needs import router as needs_router
 from backend.app.api.v1.endpoints.dispatches import router as dispatches_router
+from backend.app.api.v1.endpoints.auth import router as auth_router
+from backend.app.api.v1.endpoints.inventory import router as inventory_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create tables on startup (For development/MVP setup)
-    # In production, we'd use Alembic. For V1.0 baseline, this works.
+    # In production, we'd use Alembic. 
     try:
         from sqlalchemy import text
         async with engine.begin() as conn:
@@ -34,15 +36,17 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Sahyog Setu API",
     description="Smart allocation operating system for NGO logistics",
-    version="1.0.0",
+    version="1.5.0",
     lifespan=lifespan
 )
 
 # Include Routers
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(webhooks_router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(volunteers_router, prefix="/api/v1/volunteers", tags=["volunteers"])
 app.include_router(needs_router, prefix="/api/v1/needs", tags=["needs"])
 app.include_router(dispatches_router, prefix="/api/v1/dispatches", tags=["dispatches"])
+app.include_router(inventory_router, prefix="/api/v1/inventory", tags=["inventory"])
 
 @app.get("/")
 async def root():

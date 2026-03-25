@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.app.database import get_db
-from backend.app.models import Volunteer, Organization, VolunteerStats
+from backend.app.models import Volunteer, Organization, VolunteerStats, TrustTier, User
+from backend.app.api.deps import get_current_user
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
@@ -10,7 +11,6 @@ from typing import List, Optional
 class VolunteerCreate(BaseModel):
     name: str = Field(..., example="Rohit Sharma")
     phone_number: str = Field(..., example="+919876543210")
-    org_id: int
     zone: Optional[str] = Field(None, example="Lucknow East")
     skills: Optional[List[str]] = Field(default=[], example=["food", "logistics"])
 
@@ -20,53 +20,62 @@ class VolunteerResponse(BaseModel):
     phone_number: str
     whatsapp_active: bool
     org_id: int
+    trust_tier: TrustTier
+    
+    # Stats integrated for Dashboard view
+    completions: int = 0
+    no_shows: int = 0
 
     class Config:
         from_attributes = True
+
+class TrustUpdate(BaseModel):
+    trust_tier: TrustTier
 
 # --- Router ---
 router = APIRouter()
 
 @router.get("/", response_model=List[VolunteerResponse])
 async def list_volunteers(
-    org_id: Optional[int] = None,
     whatsapp_active: Optional[bool] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    List registered volunteers.
-    Supports filtering by org_id and activation status.
+    List volunteers registered to the current NGO.
+    Includes completions and no-show stats.
     """
-    stmt = select(Volunteer)
-    if org_id is not None:
-        stmt = stmt.where(Volunteer.org_id == org_id)
+    # Join with Stats to get the counters
+    stmt = (
+        select(Volunteer, VolunteerStats.completions, VolunteerStats.no_shows)
+        .join(VolunteerStats, Volunteer.id == VolunteerStats.volunteer_id)
+        .where(Volunteer.org_id == current_user.org_id)
+    )
+    
     if whatsapp_active is not None:
         stmt = stmt.where(Volunteer.whatsapp_active == whatsapp_active)
         
     result = await db.execute(stmt)
-    return result.scalars().all()
+    
+    vols = []
+    for row in result:
+        v, comp, noshow = row
+        # Map to Response model manually because of the join
+        resp = VolunteerResponse.from_orm(v)
+        resp.completions = comp
+        resp.no_shows = noshow
+        vols.append(resp)
+        
+    return vols
 
 @router.post("/", response_model=VolunteerResponse, status_code=status.HTTP_201_CREATED)
 async def register_volunteer(
     data: VolunteerCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """
-    Register a volunteer with PENDING Activation status.
-    Must activate WhatsApp thread with Twilio to receive alerts.
-    """
-    # 1. Verify Organization exists
-    org_stmt = select(Organization).where(Organization.id == data.org_id)
-    org_result = await db.execute(org_stmt)
-    org = org_result.scalar_one_or_none()
-    
-    if not org:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Organization not found"
-        )
-
-    # 2. Check duplicate phone
+    """Register a new volunteer for the current NGO."""
+    # 1. Check duplicate phone
     phone_stmt = select(Volunteer).where(Volunteer.phone_number == data.phone_number)
     phone_result = await db.execute(phone_stmt)
     if phone_result.scalar_one_or_none():
@@ -75,24 +84,50 @@ async def register_volunteer(
             detail="Volunteer with this phone number already registered"
         )
 
-    # 3. Create Volunteer (whatsapp_active=False default)
+    # 2. Create Volunteer
     volunteer = Volunteer(
-        org_id=data.org_id,
+        org_id=current_user.org_id,
         name=data.name,
         phone_number=data.phone_number,
         whatsapp_active=False,
         skills=data.skills,
         zone=data.zone
     )
-    
     db.add(volunteer)
-    await db.flush()  # Populates volunteer.id
+    await db.flush()
 
-    # 4. Initialize VolunteerStats
+    # 3. Initialize Stats
     stats = VolunteerStats(volunteer_id=volunteer.id)
     db.add(stats)
 
     await db.commit()
     await db.refresh(volunteer)
+    
+    # Return with default 0 stats
+    resp = VolunteerResponse.from_orm(volunteer)
+    resp.completions = 0
+    resp.no_shows = 0
+    return resp
 
+@router.patch("/{vol_id}/trust", response_model=VolunteerResponse)
+async def update_trust_tier(
+    vol_id: int,
+    data: TrustUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update a volunteer's trust tier (Coordinator only)."""
+    stmt = select(Volunteer).where(
+        Volunteer.id == vol_id, 
+        Volunteer.org_id == current_user.org_id
+    )
+    result = await db.execute(stmt)
+    volunteer = result.scalar_one_or_none()
+    
+    if not volunteer:
+        raise HTTPException(status_code=404, detail="Volunteer not found in your organization")
+
+    volunteer.trust_tier = data.trust_tier
+    await db.commit()
+    await db.refresh(volunteer)
     return volunteer

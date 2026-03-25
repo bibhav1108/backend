@@ -14,6 +14,7 @@ class NeedType(str, enum.Enum):
     BLANKET = "BLANKET"
     MEDICAL = "MEDICAL"
     VEHICLE = "VEHICLE"
+    OTHER = "OTHER"
 
 class NeedStatus(str, enum.Enum):
     OPEN = "OPEN"
@@ -51,6 +52,21 @@ class Organization(Base):
 
     volunteers: Mapped[List["Volunteer"]] = relationship(back_populates="organization")
     needs: Mapped[List["Need"]] = relationship(back_populates="organization")
+    users: Mapped[List["User"]] = relationship(back_populates="organization")
+    inventory: Mapped[List["Inventory"]] = relationship(back_populates="organization")
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
+    email: Mapped[str] = mapped_column(unique=True, index=True)
+    hashed_password: Mapped[str] = mapped_column()
+    full_name: Mapped[Optional[str]] = mapped_column(nullable=True)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    organization: Mapped["Organization"] = relationship(back_populates="users")
 
 class Volunteer(Base):
     __tablename__ = "volunteers"
@@ -94,7 +110,7 @@ class Need(Base):
     __tablename__ = "needs"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
+    org_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id"), nullable=True)
     type: Mapped[NeedType] = mapped_column(SQLEnum(NeedType))
     description: Mapped[str] = mapped_column()
     quantity: Mapped[str] = mapped_column()  # e.g., "50 packets"
@@ -135,3 +151,15 @@ class AuditTrail(Base):
     target_id: Mapped[Optional[str]] = mapped_column(nullable=True) # ID of need/volunteer affected
     notes: Mapped[Optional[str]] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+class Inventory(Base):
+    __tablename__ = "inventory"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
+    item_name: Mapped[str] = mapped_column(index=True)
+    quantity: Mapped[float] = mapped_column(default=0.0)
+    unit: Mapped[str] = mapped_column()  # e.g., "kg", "packets", "liters"
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    organization: Mapped["Organization"] = relationship(back_populates="inventory")
