@@ -146,23 +146,6 @@ async def list_surplus_alerts(
     result = await db.execute(stmt)
     return result.scalars().all()
 
-    alert.is_processed = True
-    await db.commit()
-
-    # Notify Donor
-    stmt_org = select(Organization).where(Organization.id == current_user.org_id)
-    org = (await db.execute(stmt_org)).scalar_one_or_none()
-    org_name = org.name if org else "A local NGO"
-
-    msg = (
-        f"📢 *NGO Interested!*\n\n"
-        f"*{org_name}* is reviewing your surplus report. 🤝\n"
-        f"They will assign a volunteer shortly if the items match their needs."
-    )
-    await telegram_service.send_message(chat_id=alert.chat_id, text=msg)
-
-    return {"status": "success", "message": "Alert marked as processed"}
-
 @router.post("/surplus-alerts/{alert_id}/convert", response_model=NeedResponse)
 async def convert_surplus_to_need(
     alert_id: int,
@@ -195,7 +178,7 @@ async def convert_surplus_to_need(
         quantity="As per report", # Placeholder to be edited by NGO
         pickup_address="Check donor contact", # Placeholder
         urgency=Urgency.HIGH, # Surplus is usually time-sensitive
-        status=NeedStatus.PENDING
+        status=NeedStatus.OPEN
     )
     
     db.add(new_need)
