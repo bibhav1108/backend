@@ -14,51 +14,132 @@ async def telegram_webhook(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Handle incoming Telegram Bot updates.
+    Handle incoming Telegram Bot updates (Messages, Contacts, Callbacks).
     """
     data = await request.json()
     
+    # --- 1. Handle Button Callbacks (Inline Buttons) ---
+    if "callback_query" in data:
+        callback = data["callback_query"]
+        chat_id = str(callback["message"]["chat"]["id"])
+        data_payload = callback.get("data", "")
+        
+        # Identify Volunteer
+        stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
+        volunteer = (await db.execute(stmt)).scalar_one_or_none()
+        
+        if data_payload.startswith("accept_") and volunteer:
+            dispatch_id = int(data_payload.split("_")[1])
+            stmt = select(Dispatch).where(Dispatch.id == dispatch_id, Dispatch.volunteer_id == volunteer.id)
+            dispatch = (await db.execute(stmt)).scalar_one_or_none()
+            
+            if dispatch and dispatch.status == DispatchStatus.SENT:
+                dispatch.status = DispatchStatus.CONFIRMED
+                raw_code, hashed, expires_at = generate_otp_pair()
+                dispatch.otp_hash = hashed
+                dispatch.otp_expires_at = expires_at
+                await db.commit()
+                
+                await telegram_service.send_message(
+                    chat_id=chat_id,
+                    text=f"🎫 *Mission Confirmed!*\n\nYour Pickup CODE is: `{raw_code}`\nValid for 45 mins."
+                )
+        return {"status": "callback_handled"}
+
     if "message" not in data:
         return {"status": "ignored"}
 
     message = data["message"]
     chat_id = str(message["chat"]["id"])
-    text = message.get("text", "").strip().upper()
+    text = message.get("text", "").strip()
+    
+    # --- 2. Handle /start and Help ---
+    if text == "/start":
+        # Check if already active
+        stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
+        volunteer = (await db.execute(stmt)).scalar_one_or_none()
+        
+        if volunteer and volunteer.telegram_active:
+            await telegram_service.send_message(
+                chat_id=chat_id,
+                text=f"Welcome back, *{volunteer.name}*! You are active and ready for missions. 🚀"
+            )
+        else:
+            keyboard = {
+                "keyboard": [[{"text": "📱 Share Contact to Verify", "request_contact": True}]],
+                "one_time_keyboard": True,
+                "resize_keyboard": True
+            }
+            await telegram_service.send_message(
+                chat_id=chat_id,
+                text=(
+                    "Welcome to *Sahyog Setu*! 🤝\n\n"
+                    "To start receiving mission alerts, please click the button below to verify your phone number."
+                ),
+                reply_markup=keyboard
+            )
+        return {"status": "start_sent"}
 
-    # 1. Lookup Volunteer by telegram_chat_id or attempt registration link
+    if text == "/help":
+        help_text = (
+            "🆘 *Sahyog Setu Help*\n\n"
+            "• `/status` - Check your volunteer stats and trust tier.\n"
+            "• Use the buttons in mission alerts to Accept or Decline tasks.\n"
+            "• If you have surplus food to report, just type the details here!"
+        )
+        await telegram_service.send_message(chat_id=chat_id, text=help_text)
+        return {"status": "help_sent"}
+
+    if text == "/status":
+        stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
+        volunteer = (await db.execute(stmt)).scalar_one_or_none()
+        
+        if volunteer:
+            status_report = (
+                f"👤 *Volunteer Profile*\n"
+                f"Name: {volunteer.name}\n"
+                f"Trust Tier: `{volunteer.trust_tier.name}`\n"
+                f"Completions: `{volunteer.completions}`\n"
+                f"No-Shows: `{volunteer.no_shows}`\n\n"
+                f"Status: *{'Active' if volunteer.telegram_active else 'Inactive'}*"
+            )
+            await telegram_service.send_message(chat_id=chat_id, text=status_report)
+        else:
+            await telegram_service.send_message(chat_id=chat_id, text="❌ Profile not found.")
+        return {"status": "status_sent"}
+
+    # --- 3. Handle Contact Sharing (Verification) ---
+    if "contact" in message:
+        contact = message["contact"]
+        phone = contact["phone_number"].replace("+", "").strip()
+        
+        # Match with DB
+        stmt = select(Volunteer).where(Volunteer.phone_number.like(f"%{phone[-10:]}%")) # Match last 10 digits
+        volunteer = (await db.execute(stmt)).scalar_one_or_none()
+        
+        if volunteer:
+            volunteer.telegram_chat_id = chat_id
+            volunteer.telegram_active = True
+            await db.commit()
+            await telegram_service.send_message(
+                chat_id=chat_id,
+                text=f"✅ *Verified!* Welcome aboard, *{volunteer.name}*.\nYou are now ready for missions."
+            )
+            return {"status": "linked"}
+        else:
+            await telegram_service.send_message(
+                chat_id=chat_id,
+                text="❌ *Error*: This number is not registered on the NGO dashboard. Please contact your coordinator."
+            )
+            return {"status": "link_failed"}
+
+    # --- 4. Fallback: Donor Flow ---
+    # Identification logic
     stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
-    result = await db.execute(stmt)
-    volunteer = result.scalar_one_or_none()
-
+    volunteer = (await db.execute(stmt)).scalar_one_or_none()
+    
     if not volunteer:
-        # Fallback: check if the user is sending "ACTIVATE <PHONE>" or similar
-        # For MVP, we'll assume the user needs to be linked.
-        if text.startswith("ACTIVATE"):
-            parts = text.split()
-            if len(parts) > 1:
-                phone = parts[1].replace("+", "").strip()
-                # Lookup by phone
-                stmt = select(Volunteer).where(Volunteer.phone_number == phone)
-                result = await db.execute(stmt)
-                volunteer = result.scalar_one_or_none()
-                
-                if volunteer:
-                    volunteer.telegram_chat_id = chat_id
-                    volunteer.telegram_active = True
-                    await db.commit()
-                    await telegram_service.send_message(
-                        chat_id=chat_id,
-                        text=(
-                            f"✅ *Sahyog Setu - Account Activated!*\n\n"
-                            f"Welcome, *{volunteer.name}*!\n"
-                            f"Your Telegram account is now linked to your volunteer profile. "
-                            f"You will receive dispatch alerts here."
-                        )
-                    )
-                    return {"status": "activated"}
-            
-            
-        # 🟢 [REPLACEMENT] Donor Flow catch-all
+        # Save as Surplus Alert
         alert = SurplusAlert(
             chat_id=chat_id,
             message_body=text,
@@ -66,63 +147,10 @@ async def telegram_webhook(
         )
         db.add(alert)
         await db.commit()
-
         await telegram_service.send_message(
             chat_id=chat_id,
-            text=(
-                "🙏 *Sahyog Setu - Thank you!*\n\n"
-                "Your surplus report has been received and shared with local NGOs. "
-                "Someone will contact you soon if a match is found."
-            )
+            text="🙏 *Thank you!* Your surplus report has been shared with local NGOs."
         )
-        return {"status": "surplus_alert_saved"}
-
-    # 2. If already linked but not active
-    if not volunteer.telegram_active:
-        if text in ["ACTIVATE", "YES"]:
-            volunteer.telegram_active = True
-            await db.commit()
-            await telegram_service.send_message(
-                chat_id=chat_id,
-                text=f"✅ *Sahyog Setu - Activated!*\n\nWelcome back, *{volunteer.name}*."
-            )
-            return {"status": "activated"}
-        return {"status": "inactive"}
-
-    # 3. Lookup active/sent Dispatch
-    stmt = (
-        select(Dispatch)
-        .where(
-            Dispatch.volunteer_id == volunteer.id,
-            Dispatch.status == DispatchStatus.SENT
-        )
-        .order_by(Dispatch.created_at.desc())
-        .limit(1)
-    )
-    result = await db.execute(stmt)
-    dispatch = result.scalar_one_or_none()
-
-    if not dispatch:
-        return {"status": "no_active_dispatch"}
-
-    if text == "YES":
-        dispatch.status = DispatchStatus.CONFIRMED
-        raw_code, hashed, expires_at = generate_otp_pair()
-        dispatch.otp_hash = hashed
-        dispatch.otp_expires_at = expires_at
-        dispatch.otp_used = False
-
-        await db.commit()
-
-        await telegram_service.send_message(
-            chat_id=chat_id,
-            text=(
-                f"🎫 *Sahyog Setu - Dispatch Confirmed*\n\n"
-                f"Your pickup unique code is: `{raw_code}`\n"
-                f"Valid for 45 minutes.\n"
-                f"Show this to the donor."
-            )
-        )
-        return {"status": "confirmed"}
+        return {"status": "surplus_saved"}
 
     return {"status": "ignored"}

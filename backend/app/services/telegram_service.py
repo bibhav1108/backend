@@ -10,13 +10,13 @@ class TelegramService:
         self.token = settings.TELEGRAM_BOT_TOKEN
         self.api_url = f"https://api.telegram.org/bot{self.token}" if self.token else None
 
-    async def send_message(self, chat_id: str, text: str, parse_mode: str = "Markdown") -> bool:
+    async def send_message(self, chat_id: str, text: str, parse_mode: str = "Markdown", reply_markup: Optional[dict] = None) -> bool:
         """
-        Send a message via Telegram Bot API.
+        Send a message via Telegram Bot API with optional reply_markup.
         """
         if not self.api_url:
             logger.warning("[Telegram LOG] Bot Token missing. Mock message:")
-            logger.info(f"[Telegram LOG] To: {chat_id} | Body: {text}")
+            logger.info(f"[Telegram LOG] To: {chat_id} | Body: {text} | Markup: {reply_markup}")
             return True
 
         url = f"{self.api_url}/sendMessage"
@@ -25,6 +25,8 @@ class TelegramService:
             "text": text,
             "parse_mode": parse_mode
         }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
 
         async with httpx.AsyncClient() as client:
             try:

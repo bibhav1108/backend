@@ -80,12 +80,20 @@ async def create_dispatch(
         f"*Type*: {need.type.name}\n"
         f"*Qty*: {need.quantity}\n"
         f"*Pickup*: {need.pickup_address}\n\n"
-        f"Reply with **`YES`** within 5 minutes to confirm assignment."
+        "Click the button below to accept:"
     )
+    
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "✅ Accept Mission", "callback_data": f"accept_{dispatch.id}"},
+            {"text": "❌ Decline", "callback_data": f"decline_{dispatch.id}"}
+        ]]
+    }
     
     await telegram_service.send_message(
         chat_id=volunteer.telegram_chat_id,
-        text=body
+        text=body,
+        reply_markup=keyboard
     )
 
     return {"message": "Dispatch created and alert fired", "dispatch_id": dispatch.id}
