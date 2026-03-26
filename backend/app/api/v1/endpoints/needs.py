@@ -146,22 +146,6 @@ async def list_surplus_alerts(
     result = await db.execute(stmt)
     return result.scalars().all()
 
-@router.patch("/surplus-alerts/{alert_id}/processed", status_code=status.HTTP_200_OK)
-async def mark_alert_processed(
-    alert_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Mark a surplus alert as processed once an NGO has manually created a Need from it.
-    """
-    stmt = select(SurplusAlert).where(SurplusAlert.id == alert_id)
-    result = await db.execute(stmt)
-    alert = result.scalar_one_or_none()
-    
-    if not alert:
-        raise HTTPException(status_code=404, detail="Surplus alert not found")
-        
     alert.is_processed = True
     await db.commit()
 
@@ -178,3 +162,57 @@ async def mark_alert_processed(
     await telegram_service.send_message(chat_id=alert.chat_id, text=msg)
 
     return {"status": "success", "message": "Alert marked as processed"}
+
+@router.post("/surplus-alerts/{alert_id}/convert", response_model=NeedResponse)
+async def convert_surplus_to_need(
+    alert_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Automated Conversion: Transforms a raw SurplusAlert into a formal NGO Need.
+    Returns the created Need so the dashboard can show/edit it.
+    """
+    stmt = select(SurplusAlert).where(SurplusAlert.id == alert_id)
+    result = await db.execute(stmt)
+    alert = result.scalar_one_or_none()
+    
+    if not alert:
+        raise HTTPException(status_code=404, detail="Surplus alert not found")
+        
+    if alert.is_processed:
+        raise HTTPException(status_code=400, detail="This alert has already been processed.")
+
+    # 1. Create the Need
+    # We attempt to parse basics from the message body if possible, or just dump it to description
+    need_description = f"Donation from {alert.donor_name or 'Donor'}: {alert.message_body}"
+    
+    new_need = Need(
+        org_id=current_user.org_id,
+        surplus_alert_id=alert.id,
+        type=NeedType.FOOD, # Default for surplus
+        description=need_description,
+        quantity="As per report", # Placeholder to be edited by NGO
+        pickup_address="Check donor contact", # Placeholder
+        urgency=Urgency.HIGH, # Surplus is usually time-sensitive
+        status=NeedStatus.PENDING
+    )
+    
+    db.add(new_need)
+    alert.is_processed = True
+    await db.commit()
+    await db.refresh(new_need)
+    
+    # 2. Notify Donor (Rich notification)
+    stmt_org = select(Organization).where(Organization.id == current_user.org_id)
+    org = (await db.execute(stmt_org)).scalar_one_or_none()
+    org_name = org.name if org else "A local NGO"
+
+    msg = (
+        f"📢 *Great News!*\n\n"
+        f"NGO *{org_name}* has officially accepted your donation report! ✨🤝\n"
+        f"They are now preparing for pickup. A volunteer will be assigned very soon."
+    )
+    await telegram_service.send_message(chat_id=alert.chat_id, text=msg)
+    
+    return new_need
