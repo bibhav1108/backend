@@ -115,16 +115,30 @@ async def telegram_webhook(
         phone = contact["phone_number"].replace("+", "").strip()
         
         # Match with DB
-        stmt = select(Volunteer).where(Volunteer.phone_number.like(f"%{phone[-10:]}%")) # Match last 10 digits
+        stmt = (
+            select(Volunteer)
+            .where(Volunteer.phone_number.like(f"%{phone[-10:]}%")) # Match last 10 digits
+            .options(selectinload(Volunteer.organization))
+        )
         volunteer = (await db.execute(stmt)).scalar_one_or_none()
         
         if volunteer:
             volunteer.telegram_chat_id = chat_id
             volunteer.telegram_active = True
             await db.commit()
+            
+            # Rich Onboarding Message
+            welcome_text = (
+                f"🎉 *Successfully Onboarded!*\n\n"
+                f"👤 *Volunteer*: {volunteer.name}\n"
+                f"🏢 *Organization*: {volunteer.organization.name}\n"
+                f"📱 *Verified*: {volunteer.phone_number}\n\n"
+                f"You are now linked to *{volunteer.organization.name}*. "
+                f"You will receive mission alerts from them directly in this chat. 🚀"
+            )
             await telegram_service.send_message(
                 chat_id=chat_id,
-                text=f"✅ *Verified!* Welcome aboard, *{volunteer.name}*.\nYou are now ready for missions."
+                text=welcome_text
             )
             return {"status": "linked"}
         else:
