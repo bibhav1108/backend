@@ -79,6 +79,8 @@ async def telegram_webhook(
             volunteer = (await db.execute(stmt)).scalar_one_or_none()
             
             if volunteer and volunteer.telegram_active:
+                # Ensure menu is synced for the volunteer
+                await telegram_service.set_bot_commands(chat_id=chat_id)
                 await telegram_service.send_message(
                     chat_id=chat_id,
                     text=f"Welcome back, *{volunteer.name}*! You are active and ready for missions. 🚀"
@@ -116,6 +118,12 @@ async def telegram_webhook(
 
         if text == "/leaderboard":
             # Fetch top 5 volunteers by completions
+            stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
+            volunteer = (await db.execute(stmt)).scalar_one_or_none()
+            if not volunteer or not volunteer.telegram_active:
+                await telegram_service.send_message(chat_id=chat_id, text="🔒 This command is for verified volunteers only.")
+                return {"status": "unauthorized"}
+
             stmt = (
                 select(Volunteer, VolunteerStats)
                 .join(VolunteerStats, Volunteer.id == VolunteerStats.volunteer_id)
@@ -142,7 +150,7 @@ async def telegram_webhook(
             )
             volunteer = (await db.execute(stmt)).scalar_one_or_none()
             
-            if volunteer:
+            if volunteer and volunteer.telegram_active:
                 stats = volunteer.stats
                 status_report = (
                     f"👤 *Volunteer Profile*\n"
@@ -150,11 +158,11 @@ async def telegram_webhook(
                     f"Trust Tier: `{volunteer.trust_tier.name}`\n"
                     f"Completions: `{stats.completions if stats else 0}`\n"
                     f"No-Shows: `{stats.no_shows if stats else 0}`\n\n"
-                    f"Status: *{'Active' if volunteer.telegram_active else 'Inactive'}*"
+                    f"Status: *Active*"
                 )
                 await telegram_service.send_message(chat_id=chat_id, text=status_report)
             else:
-                await telegram_service.send_message(chat_id=chat_id, text="❌ Profile not found. Are you registered as a volunteer?")
+                await telegram_service.send_message(chat_id=chat_id, text="🔒 This profile is for verified volunteers only. Please link your account first.")
             return {"status": "status_sent"}
 
         if text == "/about":
@@ -177,6 +185,13 @@ async def telegram_webhook(
             return {"status": "tutorial_sent"}
 
         if text == "/cancel":
+            # Identify Volunteer
+            stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
+            volunteer = (await db.execute(stmt)).scalar_one_or_none()
+            if not volunteer or not volunteer.telegram_active:
+                await telegram_service.send_message(chat_id=chat_id, text="🔒 This command is for verified volunteers only.")
+                return {"status": "unauthorized"}
+
             # Cancel the latest active dispatch for this volunteer
             stmt = (
                 select(Dispatch)
@@ -282,6 +297,8 @@ async def telegram_webhook(
                     volunteer.telegram_chat_id = chat_id
                     volunteer.telegram_active = True
                     await db.commit()
+                    # Trigger menu sync for volunteer
+                    await telegram_service.set_bot_commands(chat_id=chat_id)
                     welcome_text = (
                         f"🎉 *Successfully Onboarded (Manual)!*\n\n"
                         f"👤 *Volunteer*: {volunteer.name}\n"
@@ -315,7 +332,8 @@ async def telegram_webhook(
                 volunteer.telegram_chat_id = chat_id
                 volunteer.telegram_active = True
                 await db.commit()
-                
+                # Trigger menu sync for volunteer
+                await telegram_service.set_bot_commands(chat_id=chat_id)
                 # Rich Onboarding Message
                 welcome_text = (
                     f"🎉 *Successfully Onboarded!*\n\n"

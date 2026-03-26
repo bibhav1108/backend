@@ -43,28 +43,51 @@ class TelegramService:
                 logger.error(f"[Telegram ERROR] Exception sending message: {e}")
                 return False
 
-    async def set_bot_commands(self) -> bool:
+    async def set_bot_commands(self, chat_id: Optional[str] = None) -> bool:
         """
-        Register standard bot commands for the Telegram Menu button.
+        Register bot commands. 
+        If chat_id is provided, sets specific commands for that volunteer (Role-based).
+        Otherwise, sets default public commands.
         """
         if not self.api_url:
             return False
             
         url = f"{self.api_url}/setMyCommands"
+        
+        public_commands = [
+            {"command": "start", "description": "🚀 Main menu"},
+            {"command": "donate", "description": "🎁 Report surplus food"},
+            {"command": "about", "description": "ℹ️ About Sahyog Setu"},
+            {"command": "help", "description": "🆘 Get assistance"},
+            {"command": "tutorial", "description": "📖 How to use"}
+        ]
+        
+        volunteer_commands = [
+            {"command": "start", "description": "🚀 Main menu"},
+            {"command": "leaderboard", "description": "🏆 Top volunteers"},
+            {"command": "my_missions", "description": "👤 Profile & stats"},
+            {"command": "cancel", "description": "⚠️ Cancel active mission"},
+            {"command": "donate", "description": "🎁 Report surplus food"},
+            {"command": "about", "description": "ℹ️ About Sahyog Setu"},
+            {"command": "help", "description": "🆘 Get assistance"}
+        ]
+        
         payload = {
-            "commands": [
-                {"command": "start", "description": "🚀 Main interactive menu"},
-                {"command": "leaderboard", "description": "🏆 Top volunteers"},
-                {"command": "my_missions", "description": "👤 Profile & trust stats"},
-                {"command": "about", "description": "ℹ️ About Sahyog Setu"},
-                {"command": "donate", "description": "🎁 Report surplus food"},
-                {"command": "help", "description": "🆘 Get assistance"}
-            ]
+            "commands": volunteer_commands if chat_id else public_commands
         }
+        
+        if chat_id:
+            payload["scope"] = {
+                "type": "chat",
+                "chat_id": chat_id
+            }
+        else:
+            payload["scope"] = {"type": "default"}
+
         async with httpx.AsyncClient() as client:
             response = await client.post(url, json=payload)
             if response.status_code == 200:
-                logger.info("[Telegram] Bot commands sync successful.")
+                logger.info(f"[Telegram] Commands sync successful (chat_id={chat_id or 'default'}).")
                 return True
             logger.error(f"[Telegram] Commands sync failed: {response.text}")
             return False

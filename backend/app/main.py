@@ -32,6 +32,7 @@ async def lifespan(app: FastAPI):
         # Add missing columns (Incremental migration)
         from backend.app.database import run_migrations
         await run_migrations()
+        # Sync Telegram Bot Commands (Public Default)
         await telegram_service.set_bot_commands()
         
         print("[Lifespan] Database tables created/verified successfully.")
