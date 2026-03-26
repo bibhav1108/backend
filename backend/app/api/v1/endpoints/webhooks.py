@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from backend.app.database import get_db
-from backend.app.models import Volunteer, Dispatch, DispatchStatus, SurplusAlert
+from backend.app.models import Volunteer, Dispatch, DispatchStatus, SurplusAlert, Organization
 from backend.app.services.otp import generate_otp_pair
 from backend.app.services.telegram_service import telegram_service
 
