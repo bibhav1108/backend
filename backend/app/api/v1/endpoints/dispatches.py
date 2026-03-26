@@ -120,6 +120,11 @@ async def verify_dispatch_otp(
     if not dispatch:
         raise HTTPException(status_code=404, detail="Dispatch record not found in your organization")
 
+    # Update dispatch status to ACCEPTED if it was SENT
+    if dispatch.status == DispatchStatus.SENT:
+        dispatch.status = DispatchStatus.ACCEPTED
+        await db.commit() # Commit the status change immediately
+
     # 2. Check if already locked/failed
     if dispatch.otp_attempts >= 3:
         dispatch.status = DispatchStatus.FAILED
@@ -158,7 +163,7 @@ async def verify_dispatch_otp(
 
     # Success Logic
     dispatch.otp_used = True
-    dispatch.status = DispatchStatus.CONFIRMED 
+    dispatch.status = DispatchStatus.COMPLETED 
     
     # Update Need lifecycle
     stmt_need = select(Need).where(Need.id == dispatch.need_id)

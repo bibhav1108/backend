@@ -60,11 +60,26 @@ async def telegram_webhook(
                             donor_msg = (
                                 f"🚚 *Volunteer On The Way!*\n\n"
                                 f"Volunteer *{volunteer.name}* has accepted your donation pickup.\n"
-                                f"Please ask them for their *6-digit verification code* and reply here with:\n\n"
-                                f"`CONFIRM <CODE>` (e.g., `CONFIRM 123456`)"
+                                f"Please ask them for their *6-digit verification code* once they arrive."
                             )
-                            await telegram_service.send_message(chat_id=alert.chat_id, text=donor_msg)
+                            inline_kb = {
+                                "inline_keyboard": [
+                                    [{"text": "✅ Confirm Pickup", "callback_data": f"confirm_pickup_{dispatch.id}"}]
+                                ]
+                            }
+                            await telegram_service.send_message(
+                                chat_id=alert.chat_id, 
+                                text=donor_msg,
+                                reply_markup=inline_kb
+                            )
             
+            if data_payload.startswith("confirm_pickup_"):
+                dispatch_id = int(data_payload.split("_")[2])
+                await telegram_service.send_message(
+                    chat_id=chat_id,
+                    text=f"📋 *Verification Required*\n\nPlease enter the *6-digit code* provided by the volunteer to complete the pickup for Mission `#{dispatch_id}`."
+                )
+
             # --- Role Selection Callbacks ---
             if data_payload == "join_volunteer":
                 # Check if already active
@@ -249,6 +264,60 @@ async def telegram_webhook(
             )
             await telegram_service.send_message(chat_id=chat_id, text=tutorial_text)
             return {"status": "tutorial_sent"}
+
+        # --- Smart OTP Detection (6 Digits) ---
+        if text.isdigit() and len(text) == 6:
+            # Check if this user is a donor with a pending dispatch
+            stmt = (
+                select(Dispatch)
+                .join(Need, Dispatch.need_id == Need.id)
+                .join(SurplusAlert, Need.surplus_alert_id == SurplusAlert.id)
+                .where(
+                    SurplusAlert.chat_id == chat_id,
+                    Dispatch.status == DispatchStatus.ACCEPTED, # Accepted by volunteer
+                    Dispatch.otp_used == False
+                )
+                .order_by(desc(Dispatch.id))
+                .limit(1)
+            )
+            dispatch = (await db.execute(stmt)).scalar_one_or_none()
+            
+            if dispatch:
+                from backend.app.services.otp import verify_otp
+                if verify_otp(text, dispatch.otp_hash):
+                    dispatch.otp_used = True
+                    dispatch.status = DispatchStatus.COMPLETED
+                    
+                    need_stmt = select(Need).where(Need.id == dispatch.need_id)
+                    need = (await db.execute(need_stmt)).scalar_one()
+                    need.status = NeedStatus.COMPLETED
+                    
+                    # Update stats
+                    stats_stmt = select(VolunteerStats).where(VolunteerStats.volunteer_id == dispatch.volunteer_id)
+                    stats = (await db.execute(stats_stmt)).scalar_one_or_none()
+                    if stats:
+                        stats.completions += 1
+                        
+                    await db.commit()
+                    await telegram_service.send_message(
+                        chat_id=chat_id,
+                        text="🎉 *Delivery Confirmed!* Thank you for your kindness. The mission is officially complete! ❤️"
+                    )
+                    
+                    # Notify Volunteer
+                    vol_stmt = select(Volunteer).where(Volunteer.id == dispatch.volunteer_id)
+                    vol = (await db.execute(vol_stmt)).scalar_one()
+                    await telegram_service.send_message(
+                        chat_id=vol.telegram_chat_id,
+                        text=f"✅ *Mission # {dispatch.id} Complete!*\nThe donor has verified the code. Great work! 🏆"
+                    )
+                    return {"status": "otp_verified"}
+                else:
+                    await telegram_service.send_message(
+                        chat_id=chat_id,
+                        text="❌ *Invalid Code.* Please re-check the 6 digits from the volunteer's phone."
+                    )
+                    return {"status": "otp_failed"}
 
         if text == "/cancel":
             # Identify Volunteer

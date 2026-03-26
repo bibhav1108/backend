@@ -34,9 +34,10 @@ class Urgency(str, enum.Enum):
     HIGH = "HIGH"
 
 class DispatchStatus(str, enum.Enum):
-    SENT = "SENT"
-    CONFIRMED = "CONFIRMED"
-    FAILED = "FAILED"
+    SENT = "SENT"        # Alert sent to volunteer
+    ACCEPTED = "ACCEPTED" # Volunteer accepted the mission
+    COMPLETED = "COMPLETED" # OTP verified by donor
+    FAILED = "FAILED"     # OTP failed 3 times or cancelled
 
 # --- Models ---
 
