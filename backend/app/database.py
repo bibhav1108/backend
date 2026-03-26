@@ -35,6 +35,40 @@ from sqlalchemy import text
 async def run_migrations():
     """Manually add missing columns for V1.5 (SQLAlchemy create_all doesn't update schema)"""
     async with engine.begin() as conn:
+        # Enums (PostgreSQL specific)
+        # We check pg_enum to see if the value exists before adding to avoid errors
+        print("[Migrations] Verifying Enums...")
+        
+        # DispatchStatus
+        for val in ['SENT', 'ACCEPTED', 'COMPLETED', 'FAILED']:
+            await conn.execute(text(f"""
+                DO $$ 
+                BEGIN 
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_type t 
+                        JOIN pg_enum e ON t.oid = e.enumtypid 
+                        WHERE t.typname = 'dispatchstatus' AND e.enumlabel = '{val}'
+                    ) THEN 
+                        ALTER TYPE dispatchstatus ADD VALUE '{val}'; 
+                    END IF; 
+                END $$;
+            """))
+            
+        # NeedStatus
+        for val in ['OPEN', 'DISPATCHED', 'OTP_SENT', 'COMPLETED', 'CLOSED']:
+            await conn.execute(text(f"""
+                DO $$ 
+                BEGIN 
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_type t 
+                        JOIN pg_enum e ON t.oid = e.enumtypid 
+                        WHERE t.typname = 'needstatus' AND e.enumlabel = '{val}'
+                    ) THEN 
+                        ALTER TYPE needstatus ADD VALUE '{val}'; 
+                    END IF; 
+                END $$;
+            """))
+
         print("[Migrations] Checking for V1.5 columns...")
         # Volunteers
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS telegram_chat_id VARCHAR;"))
@@ -62,7 +96,7 @@ async def run_migrations():
         
         # Surplus Alerts
         await conn.execute(text("ALTER TABLE surplus_alerts ADD COLUMN IF NOT EXISTS phone_number VARCHAR;"))
-        
+
         print("[Migrations] Done.")
 
 # Dependency to get AsyncSession in FastAPI routes
