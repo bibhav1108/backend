@@ -13,6 +13,7 @@ from backend.app.api.v1.endpoints.webhooks import router as webhooks_router
 from backend.app.api.v1.endpoints.volunteers import router as volunteers_router
 from backend.app.api.v1.endpoints.needs import router as needs_router
 from backend.app.api.v1.endpoints.dispatches import router as dispatches_router
+from backend.app.services.telegram_service import telegram_service
 from backend.app.api.v1.endpoints.auth import router as auth_router
 from backend.app.api.v1.endpoints.inventory import router as inventory_router
 from backend.app.api.v1.endpoints.organizations import router as organizations_router
@@ -40,7 +41,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[Lifespan WARNING] Database connection or creation failed: {e}")
         print("[Lifespan WARNING] Continuing boot for endpoint route verification purposes.")
+    
     yield
+    
+    # Graceful Shutdown
+    await telegram_service.close()
+    print("[Lifespan] Telegram service client closed.")
 
 
 app = FastAPI(

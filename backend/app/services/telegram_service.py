@@ -11,6 +11,16 @@ class TelegramService:
     def __init__(self):
         self.token = settings.TELEGRAM_BOT_TOKEN
         self.api_url = f"https://api.telegram.org/bot{self.token}" if self.token else None
+        self._client: Optional[httpx.AsyncClient] = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=10.0)
+        return self._client
+
+    async def close(self):
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
 
     async def send_message(self, chat_id: str, text: str, parse_mode: str = "Markdown", reply_markup: Optional[dict] = None) -> bool:
         """
@@ -33,17 +43,17 @@ class TelegramService:
             else:
                 payload["reply_markup"] = reply_markup
 
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(url, json=payload)
-                if response.status_code == 200:
-                    logger.info(f"[Telegram] Message sent to {chat_id}") # Added this line as per instruction's implied change
-                    return True
-                logger.error(f"[Telegram ERROR] Failed to send message: {response.text}")
-                return False
-            except Exception as e:
-                logger.error(f"[Telegram ERROR] Exception sending message: {e}")
-                return False
+        client = self._get_client()
+        try:
+            response = await client.post(url, json=payload)
+            if response.status_code == 200:
+                logger.info(f"[Telegram] Message sent to {chat_id}")
+                return True
+            logger.error(f"[Telegram ERROR] Failed to send message: {response.text}")
+            return False
+        except Exception as e:
+            logger.error(f"[Telegram ERROR] Exception sending message: {e}")
+            return False
 
     async def send_photo(self, chat_id: str, photo_path: str, caption: str = "", reply_markup: Optional[dict] = None) -> bool:
         """
@@ -67,44 +77,44 @@ class TelegramService:
             if reply_markup:
                 payload["reply_markup"] = json.dumps(reply_markup) # Ensure reply_markup is dumped to JSON
                 
-            async with httpx.AsyncClient() as client:
-                try:
-                    response = await client.post(url, json=payload)
-                    if response.status_code == 200:
-                        logger.info(f"[Telegram] Photo sent to {chat_id} from URL: {photo_path}")
-                        return True
-                    logger.error(f"[Telegram ERROR] Failed to send photo from URL: {response.text}")
-                    return False
-                except Exception as e:
-                    logger.error(f"[Telegram ERROR] Exception sending photo from URL: {e}")
-                    return False
+            client = self._get_client()
+            try:
+                response = await client.post(url, json=payload)
+                if response.status_code == 200:
+                    logger.info(f"[Telegram] Photo sent to {chat_id} from URL: {photo_path}")
+                    return True
+                logger.error(f"[Telegram ERROR] Failed to send photo from URL: {response.text}")
+                return False
+            except Exception as e:
+                logger.error(f"[Telegram ERROR] Exception sending photo from URL: {e}")
+                return False
         else:
             # Handle local file upload
             if not os.path.exists(photo_path):
                 logger.error(f"[Telegram ERROR] Local photo not found: {photo_path}")
                 return False
                 
-            async with httpx.AsyncClient() as client:
-                try:
-                    with open(photo_path, "rb") as f:
-                        files = {"photo": f}
-                        data = {
-                            "chat_id": chat_id,
-                            "caption": caption,
-                            "parse_mode": "Markdown"
-                        }
-                        if reply_markup:
-                            data["reply_markup"] = json.dumps(reply_markup)
-                            
-                        response = await client.post(url, data=data, files=files)
-                        if response.status_code == 200:
-                            logger.info(f"[Telegram] Photo sent to {chat_id} from local file: {photo_path}")
-                            return True
-                        logger.error(f"[Telegram ERROR] Failed to send local photo: {response.text}")
-                        return False
-                except Exception as e:
-                    logger.error(f"[Telegram ERROR] Exception sending local photo: {e}")
+            client = self._get_client()
+            try:
+                with open(photo_path, "rb") as f:
+                    files = {"photo": f}
+                    data = {
+                        "chat_id": chat_id,
+                        "caption": caption,
+                        "parse_mode": "Markdown"
+                    }
+                    if reply_markup:
+                        data["reply_markup"] = json.dumps(reply_markup)
+                        
+                    response = await client.post(url, data=data, files=files)
+                    if response.status_code == 200:
+                        logger.info(f"[Telegram] Photo sent to {chat_id} from local file: {photo_path}")
+                        return True
+                    logger.error(f"[Telegram ERROR] Failed to send local photo: {response.text}")
                     return False
+            except Exception as e:
+                logger.error(f"[Telegram ERROR] Exception sending local photo: {e}")
+                return False
 
     async def set_bot_commands(self, chat_id: Optional[str] = None) -> bool:
         """
@@ -147,12 +157,12 @@ class TelegramService:
         else:
             payload["scope"] = {"type": "default"}
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, json=payload)
-            if response.status_code == 200:
-                logger.info(f"[Telegram] Commands sync successful (chat_id={chat_id or 'default'}).")
-                return True
-            logger.error(f"[Telegram] Commands sync failed: {response.text}")
-            return False
+        client = self._get_client()
+        response = await client.post(url, json=payload)
+        if response.status_code == 200:
+            logger.info(f"[Telegram] Commands sync successful (chat_id={chat_id or 'default'}).")
+            return True
+        logger.error(f"[Telegram] Commands sync failed: {response.text}")
+        return False
 
 telegram_service = TelegramService()
