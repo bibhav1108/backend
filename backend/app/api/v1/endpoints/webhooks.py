@@ -7,6 +7,7 @@ from backend.app.database import get_db
 from backend.app.models import Volunteer, Dispatch, DispatchStatus, SurplusAlert, Organization, Need, VolunteerStats
 from backend.app.services.otp import generate_otp_pair
 from backend.app.services.telegram_service import telegram_service
+import os
 
 router = APIRouter()
 
@@ -60,9 +61,33 @@ async def telegram_webhook(
                                 f"🚚 *Volunteer On The Way!*\n\n"
                                 f"Volunteer *{volunteer.name}* has accepted your donation pickup.\n"
                                 f"Please ask them for their *6-digit verification code* and reply here with:\n\n"
-                                f"`CONFIRM <CODE>` (e.g., `CONFIRM 123456`)"
-                            )
                             await telegram_service.send_message(chat_id=alert.chat_id, text=donor_msg)
+            
+            # --- Role Selection Callbacks ---
+                # Show the share contact button
+                kb = {
+                    "keyboard": [[{"text": "📱 Share Contact to Verify", "request_contact": True}]],
+                    "one_time_keyboard": True,
+                    "resize_keyboard": True
+                }
+                await telegram_service.send_message(
+                    chat_id=chat_id,
+                    text="Great! To link your volunteer account, please click the button below to share your contact details with us.",
+                    reply_markup=kb
+                )
+                
+            if data_payload == "donate_surplus":
+                # Trigger donation flow instructions
+                await telegram_service.send_message(
+                    chat_id=chat_id,
+                    text="🎁 *Donation Portal*\n\nTo report surplus, please share your contact first so NGOs can coordinate the pickup with you.",
+                    reply_markup={
+                        "keyboard": [[{"text": "📱 Share Donor Contact", "request_contact": True}]],
+                        "one_time_keyboard": True,
+                        "resize_keyboard": True
+                    }
+                )
+
             return {"status": "callback_handled"}
 
         if "message" not in data:
@@ -86,24 +111,39 @@ async def telegram_webhook(
                     text=f"Welcome back, *{volunteer.name}*! You are active and ready for missions. 🚀"
                 )
             else:
-                keyboard = {
-                    "keyboard": [
-                        [{"text": "📱 I am a Volunteer", "request_contact": True}],
-                        [{"text": "🎁 Donate Surplus"}]
-                    ],
-                    "one_time_keyboard": True,
-                    "resize_keyboard": True
-                }
-                await telegram_service.send_message(
-                    chat_id=chat_id,
-                    text=(
-                        "Welcome to *Sahyog Setu*! 🤝\n\n"
-                        "To start, please choose your role below:\n\n"
-                        "🙋‍♂️ *Volunteer*: Click the button to verify and start receiving missions.\n"
-                        "🎁 *Donor*: Click to report surplus items for local NGOs."
-                    ),
-                    reply_markup=keyboard
+                first_name = message.get("from", {}).get("first_name", "there")
+                welcome_caption = (
+                    f"Hey 👋 *{first_name}*!\n\n"
+                    f"🤝 *WELCOME TO SAHYOG SETU*\n\n"
+                    f"The ultimate bridge connecting your kindness (Surplus Food) to those who need it most.\n\n"
+                    f"How would you like to contribute today?\n"
+                    f"👇 *Select your role below*:"
                 )
+                
+                inline_kb = {
+                    "inline_keyboard": [
+                        [{"text": "🙋‍♂️ Join as Volunteer", "callback_data": "join_volunteer"}],
+                        [{"text": "🎁 Donate Surplus Food", "callback_data": "donate_surplus"}]
+                    ]
+                }
+                
+                # Check for local poster
+                import os
+                poster_path = "backend/app/static/welcome.png"
+                if not os.path.exists(poster_path):
+                    # Fallback to text if image missing
+                    await telegram_service.send_message(
+                        chat_id=chat_id,
+                        text=welcome_caption,
+                        reply_markup=inline_kb
+                    )
+                else:
+                    await telegram_service.send_photo(
+                        chat_id=chat_id,
+                        photo_path=poster_path,
+                        caption=welcome_caption,
+                        reply_markup=inline_kb
+                    )
             return {"status": "start_sent"}
 
         if text == "/help":
