@@ -61,9 +61,12 @@ async def telegram_webhook(
                                 f"🚚 *Volunteer On The Way!*\n\n"
                                 f"Volunteer *{volunteer.name}* has accepted your donation pickup.\n"
                                 f"Please ask them for their *6-digit verification code* and reply here with:\n\n"
+                                f"`CONFIRM <CODE>` (e.g., `CONFIRM 123456`)"
+                            )
                             await telegram_service.send_message(chat_id=alert.chat_id, text=donor_msg)
             
             # --- Role Selection Callbacks ---
+            if data_payload == "join_volunteer":
                 # Show the share contact button
                 kb = {
                     "keyboard": [[{"text": "📱 Share Contact to Verify", "request_contact": True}]],
