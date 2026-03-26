@@ -75,7 +75,9 @@ async def telegram_webhook(
                 chat_id=chat_id,
                 text=(
                     "Welcome to *Sahyog Setu*! 🤝\n\n"
-                    "To start receiving mission alerts, please click the button below to verify your phone number."
+                    "To start receiving mission alerts, please choose a verification method:\n\n"
+                    "1️⃣ **One-Click**: Click the button below to share your verified contact.\n"
+                    "2️⃣ **Manual**: Type `ACTIVATE <PHONE_NUMBER>` (e.g., `ACTIVATE 9876543210`) if you prefer manual entry."
                 ),
                 reply_markup=keyboard
             )
@@ -108,6 +110,39 @@ async def telegram_webhook(
         else:
             await telegram_service.send_message(chat_id=chat_id, text="❌ Profile not found.")
         return {"status": "status_sent"}
+
+    # --- 2.5 Handle Manual ACTIVATE command ---
+    if text.upper().startswith("ACTIVATE"):
+        parts = text.split()
+        if len(parts) > 1:
+            phone = parts[1].replace("+", "").strip()
+            # Match with DB
+            stmt = (
+                select(Volunteer)
+                .where(Volunteer.phone_number.like(f"%{phone[-10:]}%"))
+                .options(selectinload(Volunteer.organization))
+            )
+            volunteer = (await db.execute(stmt)).scalar_one_or_none()
+            
+            if volunteer:
+                volunteer.telegram_chat_id = chat_id
+                volunteer.telegram_active = True
+                await db.commit()
+                welcome_text = (
+                    f"🎉 *Successfully Onboarded (Manual)!*\n\n"
+                    f"👤 *Volunteer*: {volunteer.name}\n"
+                    f"🏢 *Organization*: {volunteer.organization.name}\n"
+                    f"📱 *Verified*: {volunteer.phone_number}\n\n"
+                    f"You are now linked to *{volunteer.organization.name}*. 🚀"
+                )
+                await telegram_service.send_message(chat_id=chat_id, text=welcome_text)
+                return {"status": "linked_manual"}
+            else:
+                await telegram_service.send_message(
+                    chat_id=chat_id,
+                    text="❌ *Error*: Number not found in our NGO database."
+                )
+                return {"status": "link_manual_failed"}
 
     # --- 3. Handle Contact Sharing (Verification) ---
     if "contact" in message:
