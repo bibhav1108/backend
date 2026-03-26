@@ -27,6 +27,11 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
             await conn.run_sync(Base.metadata.create_all)
+        
+        # Add missing columns (Incremental migration)
+        from backend.app.database import run_migrations
+        await run_migrations()
+        
         print("[Lifespan] Database tables created/verified successfully.")
 
     except Exception as e:

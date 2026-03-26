@@ -31,6 +31,36 @@ async_session = async_sessionmaker(
 class Base(DeclarativeBase):
     pass
 
+from sqlalchemy import text
+async def run_migrations():
+    """Manually add missing columns for V1.5 (SQLAlchemy create_all doesn't update schema)"""
+    async with engine.begin() as conn:
+        print("[Migrations] Checking for V1.5 columns...")
+        # Volunteers
+        await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS telegram_chat_id VARCHAR;"))
+        await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS telegram_active BOOLEAN DEFAULT FALSE;"))
+        await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS trust_tier VARCHAR DEFAULT 'UNVERIFIED';"))
+        await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS skills JSON;"))
+        await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS zone VARCHAR;"))
+        await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS location geometry(POINT, 4326);"))
+        
+        # Stats
+        await conn.execute(text("ALTER TABLE volunteer_stats ADD COLUMN IF NOT EXISTS hours_served FLOAT DEFAULT 0.0;"))
+        
+        # Dispatches
+        await conn.execute(text("ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS otp_hash VARCHAR;"))
+        await conn.execute(text("ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS otp_used BOOLEAN DEFAULT FALSE;"))
+        await conn.execute(text("ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP;"))
+        await conn.execute(text("ALTER TABLE dispatches ADD COLUMN IF NOT EXISTS otp_attempts INTEGER DEFAULT 0;"))
+        
+        # Organizations
+        await conn.execute(text("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS status VARCHAR DEFAULT 'pending';"))
+        
+        # Needs
+        await conn.execute(text("ALTER TABLE needs ADD COLUMN IF NOT EXISTS org_id INTEGER REFERENCES organizations(id);"))
+        
+        print("[Migrations] Done.")
+
 # Dependency to get AsyncSession in FastAPI routes
 async def get_db():
     async with async_session() as session:
