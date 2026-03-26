@@ -2,6 +2,23 @@
 
 This document provides a **comprehensive breakdown** of every version of Sahyog Setu, detailing the operational flow (Mermaid diagrams) and the granular subparts/components active in each phase.
 
+> [!IMPORTANT]
+> **Migration Note: Twilio to Telegram API (Hackathon Phase)**
+>
+> For the current hackathon development phase of our project Sahyog Setu, we have decided to shift our messaging integration from Twilio API to the Telegram Bot API.
+> 
+> This decision has been taken due to practical constraints such as business verification requirements, setup time, and limited access to free-tier messaging services on Twilio/WhatsApp at this early prototype stage.
+> 
+> **Telegram provides:**
+> - Completely free bot and messaging API access
+> - Faster development and deployment for real-time communication features
+> - Easy user onboarding via bot links and groups
+> - Sufficient scalability for demonstrating impact during the hackathon
+> 
+> Our focus at this stage is to build a functional, high-impact prototype that clearly demonstrates the platform’s value in connecting donors, NGOs, and volunteers efficiently. 
+> 
+> In the long term, as the project evolves toward a startup model, we plan to evaluate and integrate more enterprise-grade communication solutions (such as WhatsApp Business API or custom mobile applications) based on scalability, compliance, and user adoption requirements.
+
 ---
 
 ## 🟢 Version 1.0: The Bridge (Minimum Viable Product)

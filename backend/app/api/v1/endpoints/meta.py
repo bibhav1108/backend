@@ -10,6 +10,7 @@ class PatchNote(BaseModel):
     title: str
     features: List[str]
     status: str
+    note: Optional[str] = None
 
 # Hardcoded patch data for now
 PATCHES = [
@@ -27,7 +28,8 @@ PATCHES = [
             "Automated Performance Stats (Completions/No-Shows)",
             "NGO Inventory Ledger"
         ],
-        "status": "STABLE"
+        "status": "STABLE",
+        "note": "Migration from Twilio to Telegram API for hackathon agility and free-tier access."
     },
     {
         "version": "1.0.0",
