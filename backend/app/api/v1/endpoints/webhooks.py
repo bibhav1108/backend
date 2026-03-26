@@ -80,16 +80,29 @@ async def telegram_webhook(
                 )
                 
             if data_payload == "donate_surplus":
-                # Trigger donation flow instructions
-                await telegram_service.send_message(
-                    chat_id=chat_id,
-                    text="🎁 *Donation Portal*\n\nTo report surplus, please share your contact first so NGOs can coordinate the pickup with you.",
-                    reply_markup={
-                        "keyboard": [[{"text": "📱 Share Donor Contact", "request_contact": True}]],
-                        "one_time_keyboard": True,
-                        "resize_keyboard": True
-                    }
-                )
+                # Check if we already have this donor's contact
+                stmt = select(SurplusAlert).where(SurplusAlert.chat_id == chat_id, SurplusAlert.phone_number != None)
+                existing_alert = (await db.execute(stmt)).first()
+                
+                if existing_alert:
+                    instr = (
+                        "📦 *Great! Reporting Surplus Items*\n\n"
+                        "To help local NGOs coordinate better, please send your donation details in this format:\n\n"
+                        "`[ITEM] [QUANTITY] [LOCATION] [ANY NOTES]`\n\n"
+                        "*Example*: `Rice 50kg Sector 15 Near Park.`"
+                    )
+                    await telegram_service.send_message(chat_id=chat_id, text=instr)
+                else:
+                    # Trigger donation flow instructions
+                    await telegram_service.send_message(
+                        chat_id=chat_id,
+                        text="🎁 *Donation Portal*\n\nTo report surplus, please share your contact first so NGOs can coordinate the pickup with you.",
+                        reply_markup={
+                            "keyboard": [[{"text": "📱 Share Donor Contact", "request_contact": True}]],
+                            "one_time_keyboard": True,
+                            "resize_keyboard": True
+                        }
+                    )
 
             return {"status": "callback_handled"}
 
