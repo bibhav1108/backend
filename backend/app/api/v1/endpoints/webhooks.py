@@ -194,14 +194,30 @@ async def telegram_webhook(
             return {"status": "cancel_handled"}
 
         if text == "/donate" or text == "🎁 Donate Surplus":
-            instr = (
-                "📦 *Great! Reporting Surplus Items*\n\n"
-                "To help local NGOs coordinate better, please send your donation details in this format:\n\n"
-                "`[ITEM] [QUANTITY] [LOCATION] [ANY NOTES]`\n\n"
-                "*Example*: `Rice 50kg Sector 15 Near Park. Ready for pickup till 8 PM.`"
-            )
-            await telegram_service.send_message(chat_id=chat_id, text=instr)
-            return {"status": "donor_instructed"}
+            # Check if we already have this donor's contact
+            stmt = select(SurplusAlert).where(SurplusAlert.chat_id == chat_id, SurplusAlert.phone_number != None)
+            existing_alert = (await db.execute(stmt)).first()
+            
+            if existing_alert:
+                instr = (
+                    "📦 *Great! Reporting Surplus Items*\n\n"
+                    "To help local NGOs coordinate better, please send your donation details in this format:\n\n"
+                    "`[ITEM] [QUANTITY] [LOCATION] [ANY NOTES]`\n\n"
+                    "*Example*: `Rice 50kg Sector 15 Near Park. Ready for pickup till 8 PM.`"
+                )
+                await telegram_service.send_message(chat_id=chat_id, text=instr)
+            else:
+                donor_keyboard = {
+                    "keyboard": [[{"text": "📱 Share Contact for NGOs", "request_contact": True}]],
+                    "one_time_keyboard": True,
+                    "resize_keyboard": True
+                }
+                await telegram_service.send_message(
+                    chat_id=chat_id,
+                    text="To report surplus, please share your contact first so NGOs can coordinate the pickup with you.",
+                    reply_markup=donor_keyboard
+                )
+            return {"status": "donor_onboarding_started"}
 
         # --- 2.6 Handle Donor CONFIRM command ---
         if text.upper().startswith("CONFIRM"):
@@ -315,11 +331,29 @@ async def telegram_webhook(
                 )
                 return {"status": "linked"}
             else:
-                await telegram_service.send_message(
+                # This could be a DONOR sharing contact
+                # Check if they recently clicked "Donate Surplus" or just share contact
+                # We'll save it as a placeholder SurplusAlert or just confirmation
+                donor_name = contact.get("first_name", "Donor")
+                
+                # Save as a pending alert (without body yet)
+                alert = SurplusAlert(
                     chat_id=chat_id,
-                    text="❌ *Error*: This number is not registered on the NGO dashboard. Please contact your coordinator."
+                    phone_number=phone,
+                    donor_name=donor_name,
+                    message_body="[Pending Report]"
                 )
-                return {"status": "link_failed"}
+                db.add(alert)
+                await db.commit()
+                
+                instr = (
+                    "✅ *Contact Verified!*\n\n"
+                    "Now, please send your donation details in this format:\n\n"
+                    "`[ITEM] [QUANTITY] [LOCATION] [ANY NOTES]`\n\n"
+                    "*Example*: `Rice 50kg Sector 15 Near Park. Ready for pickup till 8 PM.`"
+                )
+                await telegram_service.send_message(chat_id=chat_id, text=instr)
+                return {"status": "donor_contact_saved"}
 
         # --- 4. Fallback: Donor Flow ---
         # Identification logic
@@ -327,14 +361,27 @@ async def telegram_webhook(
         volunteer = (await db.execute(stmt)).scalar_one_or_none()
         
         if not volunteer:
-            # Save as Surplus Alert
-            alert = SurplusAlert(
-                chat_id=chat_id,
-                message_body=text,
-                donor_name=message.get("from", {}).get("first_name", "Anonymous Donor")
+            # Check for a pending alert (one created when contact was shared)
+            stmt = (
+                select(SurplusAlert)
+                .where(SurplusAlert.chat_id == chat_id, SurplusAlert.message_body == "[Pending Report]")
+                .order_by(desc(SurplusAlert.created_at))
             )
-            db.add(alert)
-            await db.commit()
+            pending_alert = (await db.execute(stmt)).scalar_one_or_none()
+            
+            if pending_alert:
+                pending_alert.message_body = text
+                await db.commit()
+            else:
+                # Save as new Surplus Alert
+                alert = SurplusAlert(
+                    chat_id=chat_id,
+                    message_body=text,
+                    donor_name=message.get("from", {}).get("first_name", "Anonymous Donor")
+                )
+                db.add(alert)
+                await db.commit()
+            
             await telegram_service.send_message(
                 chat_id=chat_id,
                 text="🙏 *Thank you!* Your surplus report has been shared with local NGOs."

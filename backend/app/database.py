@@ -60,6 +60,9 @@ async def run_migrations():
         await conn.execute(text("ALTER TABLE needs ADD COLUMN IF NOT EXISTS org_id INTEGER REFERENCES organizations(id);"))
         await conn.execute(text("ALTER TABLE needs ADD COLUMN IF NOT EXISTS surplus_alert_id INTEGER REFERENCES surplus_alerts(id);"))
         
+        # Surplus Alerts
+        await conn.execute(text("ALTER TABLE surplus_alerts ADD COLUMN IF NOT EXISTS phone_number VARCHAR;"))
+        
         print("[Migrations] Done.")
 
 # Dependency to get AsyncSession in FastAPI routes

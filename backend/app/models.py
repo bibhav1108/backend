@@ -172,6 +172,7 @@ class SurplusAlert(Base) :
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     chat_id: Mapped[str] = mapped_column(index=True)
     message_body: Mapped[str] = mapped_column()
+    phone_number: Mapped[Optional[str]] = mapped_column(nullable=True)
     donor_name: Mapped[Optional[str]] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     is_processed: Mapped[bool] = mapped_column(default=False)
