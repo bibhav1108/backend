@@ -61,8 +61,8 @@ sequenceDiagram
 
 ---
 
-## 🟡 Version 1.5 & 1.6: Trust & Track (Donor Link)
-*Goal: Multi-NGO isolation and Donor-side verification flow.*
+## 🟡 Version 1.5, 1.6 & 1.7: Trust & Track (Enhanced UX)
+*Goal: Multi-NGO isolation, Rich Onboarding, and Smart OTP flow.*
 
 ### 🗺️ Operational Flow (Donor-Bot Integration)
 ```mermaid
@@ -73,38 +73,39 @@ sequenceDiagram
     actor NGO_Admin
     actor Volunteer
 
-    Donor->>Bot: 🎁 Click "Donate Surplus"
-    Bot->>Donor: 📋 Request Format: [Item][Qty][Loc]
+    Donor->>Bot: 🚀 /start (Rich Poster + Role Select)
+    Donor->>Bot: 📱 Share Contact (Persistent Save)
+    Donor->>Bot: 🎁 "Donate Surplus"
     Donor->>Bot: 📝 Sends Details
     Bot->>Backend: 📡 Log SurplusAlert
     
-    NGO_Admin->>Backend: 🖐️ Claim Alert (Dashboard)
-    Backend->>Backend: 📝 Convert to "Need" (org_id isolated)
+    NGO_Admin->>Backend: ⚡ Auto-Convert Alert (Dashboard)
+    Backend->>Donor: 📢 Notify: NGO [Name] claimed your donation!
     
     NGO_Admin->>Backend: 🎫 Dispatch Volunteer
     Backend->>Volunteer: 📱 Mission Alert (Bot)
     Volunteer->>Bot: ✅ Accept
-    Bot->>Volunteer: 🎫 Provides 6-digit OTP
+    Backend->>Volunteer: 🎫 Provides 6-digit OTP
+    Backend->>Donor: 🚚 Notify: [Name] is coming! [✅ Confirm Pickup]
     
-    Backend->>Donor: 🚚 Notify: Volunteer [Name] is coming
-    Volunteer->>Donor: 🚗 Arrives at Location
-    
-    Donor->>Bot: 🔢 Type "CONFIRM <CODE>"
+    Volunteer->>Donor: 🚗 Arrives & shows Code
+    Donor->>Bot: 🔢 Clicks "Confirm" & Enters Digits (e.g. 123456)
     Bot->>Backend: 📡 Verify OTP & Mark Complete
-    Backend->>Donor: ✅ "Thank you! Impact Recorded"
-    Backend->>Volunteer: 🎉 "Mission Successful (+1 Stats)"
+    Backend->>Donor: 🎉 "Thank you! Impact Recorded"
+    Backend->>Volunteer: 🏆 "Mission Complete (+1 Stats)"
 ```
 
 ### 🧩 Subparts & Components: V1.5/1.6
 | Subpart | Component | Details |
 | :--- | :--- | :--- |
-| **Onboarding** | NGO Registration | Atomic `POST /register` to create Org + Creator. |
-| **Marketplace** | Claiming Engine | FCFS mechanism for global donation alerts. |
-| **Donor Bot** | 🎁 Donate Surplus | Specialized button and formatted reporting UI. |
-| **Verification** | `CONFIRM <CODE>` | Donor-side OTP verification via standard command. |
+| **Onboarding** | Rich Role-Select | Visual poster + Inline buttons for Role Discovery. |
+| **Marketplace** | Auto-Convert Engine| One-click transform from Alert to linked Need. |
+| **Donor Bot** | 🎁 Donate Surplus | Specialized button and persistent contact verification. |
+| **Verification** | Smart OTP Detection | Donor clicks "Confirm" and bot auto-verifies 6 digits. |
+| **Lifecycle** | ACCEPTED/COMPLETED | Granular state tracking for every mission stage. |
+| **Performance** | Persistent Client | Reuse of httpx connections for 3x faster delivery. |
 | **Volunteer Trust**| 3-Tier System | `UNVERIFIED` -> `ID_VERIFIED` -> `FIELD_VERIFIED`. |
-| **Stats tracking** | Auto-Stats | Automatic `completions` and `no_shows` counters. |
-| **Menu Sync** | Automated Ops | Bot menu automatically syncs via `setMyCommands`. |
+| **Menu Sync** | Automated Scopes | Bot commands automatically sync based on user role. |
 
 ---
 
