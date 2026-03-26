@@ -5,7 +5,7 @@ from backend.app.database import get_db
 from backend.app.models import Dispatch, Need, Volunteer, DispatchStatus, NeedStatus, User, VolunteerStats
 from backend.app.api.deps import get_current_user
 from backend.app.services.otp import verify_otp
-from backend.app.services.twilio_service import twilio_service
+from backend.app.services.telegram_service import telegram_service
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import List, Optional
@@ -48,10 +48,10 @@ async def create_dispatch(
     if not volunteer:
         raise HTTPException(status_code=404, detail="Volunteer not found in your organization")
     
-    if not volunteer.whatsapp_active:
+    if not volunteer.telegram_active or not volunteer.telegram_chat_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Volunteer must activate WhatsApp activation gate first."
+            detail="Volunteer must activate Telegram bot activation gate first."
         )
 
     # 3. Create Dispatch
@@ -83,9 +83,9 @@ async def create_dispatch(
         f"Reply with **`YES`** within 5 minutes to confirm assignment."
     )
     
-    await twilio_service.send_whatsapp_message(
-        to_number=f"whatsapp:{volunteer.phone_number}",
-        body=body
+    await telegram_service.send_message(
+        chat_id=volunteer.telegram_chat_id,
+        text=body
     )
 
     return {"message": "Dispatch created and alert fired", "dispatch_id": dispatch.id}

@@ -38,8 +38,8 @@ sequenceDiagram
 | :--- | :--- | :--- |
 | **NGO Dashboard** | Need Creator | Form: Type, Quantity, Location, Urgency, Pickup deadline. |
 | | Volunteer List View | Table row display of registered, active volunteers. |
-| **Volunteer System** | Activation Gate | Registration form submits data; strictly sets `whatsapp_active = false` until a reply test message fires to activate the Twilio thread. |
-| **Dispatch Intelligence** | Twilio Broadcast | Sequential broadcast trigger on coordinate triggers. |
+| **Volunteer System** | Telegram Bot Gate | Registration linked via `ACTIVATE <phone>`; sets `telegram_active = true` to enable machine alerts. |
+| **Dispatch Intelligence** | Telegram Broadcast | Native Bot API message delivery for mission alerts. |
 | **Security Layer** | OTP Engine | HMAC-SHA256 6-digit code generation. 45-min TTL window, single-use, 3-attempt lock constraint. |
 
 ---
@@ -105,9 +105,9 @@ sequenceDiagram
     Backend->>Coordinator: 🔔 Needs Approval Alert (Dashboard Card)
     Coordinator->>Backend: 👍 Approves recommended Top-1 Choice
     
-    Backend->>Twilio: 🚀 Sequential Top-3 Broadcast Waterfall
-    Volunteer->>Twilio: 👍 Replies "YES" within 5-min slot
-    Twilio->>Backend: 📡 Locks Assignment
+    Backend->>Telegram: 🚀 Sequential Top-3 Broadcast Waterfall
+    Volunteer->>Telegram: 👍 Replies "YES" within 5-min slot
+    Telegram->>Backend: 📡 Locks Assignment
 ```
 
 ### 🧩 Subparts & Components: V2.0
@@ -117,7 +117,7 @@ sequenceDiagram
 | | Low Confidence Queue | Low scores go to `requires_review` dashboard queue for manual fix. |
 | **Spatial Matching** | PostGIS GEOMETRY | Spatial query finds candidates within radius in milliseconds; replaces slow app mathematical calculations. |
 | **ML Ranking Model** | 2-Factor Ranker | logistic ranking model measuring ` proximity (40%) + completion logic (60%)`. |
-| **Dispatch Cascade** | Waterfall Cascade | Sequential Twilio firing loop: Volunteer 1 gets trigger; if dead air, trigger Volunteer 2. |
+| **Dispatch Cascade** | Waterfall Cascade | Sequential Telegram firing loop: Volunteer 1 gets trigger; if dead air, trigger Volunteer 2. |
 | **Campaign Mode** | Event slots engine | Structuring events registration, waitlists, morning-of check-ins. |
 
 ---

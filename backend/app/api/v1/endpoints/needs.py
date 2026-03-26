@@ -31,6 +31,14 @@ class NeedResponse(BaseModel):
     pickup_deadline: Optional[datetime]
     created_at: datetime
 
+class SurplusAlertResponse(BaseModel):
+    id: int
+    chat_id: str
+    message_body: str
+    donor_name: Optional[str]
+    created_at: datetime
+    is_processed: bool
+
     class Config:
         from_attributes = True
 
@@ -106,3 +114,34 @@ async def claim_need(
     await db.commit()
     await db.refresh(need)
     return need
+@router.get("/surplus-alerts", response_model=List[SurplusAlertResponse])
+async def list_surplus_alerts(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    List all unprocessed surplus alerts from the Telegram bot for NGOs to claim/review.
+    """
+    stmt = select(SurplusAlert).where(SurplusAlert.is_processed == False).order_by(SurplusAlert.created_at.desc())
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+@router.patch("/surplus-alerts/{alert_id}/processed", status_code=status.HTTP_200_OK)
+async def mark_alert_processed(
+    alert_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Mark a surplus alert as processed once an NGO has manually created a Need from it.
+    """
+    stmt = select(SurplusAlert).where(SurplusAlert.id == alert_id)
+    result = await db.execute(stmt)
+    alert = result.scalar_one_or_none()
+    
+    if not alert:
+        raise HTTPException(status_code=404, detail="Surplus alert not found")
+        
+    alert.is_processed = True
+    await db.commit()
+    return {"status": "success", "message": "Alert marked as processed"}

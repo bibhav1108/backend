@@ -22,6 +22,7 @@ PATCHES = [
             "JWT-based NGO Authentication",
             "Public Marketplace for Donation Alerts",
             "Atomic NGO Onboarding & Registration",
+            "Telegram Bot Integration (Replacing Twilio/WhatsApp)",
             "Volunteer Trust Tiers (Unverified -> Field Verified)",
             "Automated Performance Stats (Completions/No-Shows)",
             "NGO Inventory Ledger"
@@ -33,7 +34,7 @@ PATCHES = [
         "release_date": "2026-03-20",
         "title": "The Bridge (MVP)",
         "features": [
-            "Manual SMS/WhatsApp Dispatch",
+            "Legacy SMS/WhatsApp Dispatch (Twilio)",
             "Volunteer Activation Gate",
             "6-Digit OTP Security Engine (Brute-force protected)",
             "Need Management Dashboard"

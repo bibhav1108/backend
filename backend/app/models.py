@@ -75,7 +75,8 @@ class Volunteer(Base):
     org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
     name: Mapped[str] = mapped_column()
     phone_number: Mapped[str] = mapped_column(unique=True, index=True)
-    whatsapp_active: Mapped[bool] = mapped_column(default=False)
+    telegram_chat_id: Mapped[Optional[str]] = mapped_column(unique=True, index=True, nullable=True)
+    telegram_active: Mapped[bool] = mapped_column(default=False)
     
     # [V3 Future-Proofing]
     trust_tier: Mapped[TrustTier] = mapped_column(SQLEnum(TrustTier), default=TrustTier.UNVERIFIED)
@@ -163,3 +164,13 @@ class Inventory(Base):
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
 
     organization: Mapped["Organization"] = relationship(back_populates="inventory")
+
+class SurplusAlert(Base) :
+    __tablename__ = "surplus_alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    chat_id: Mapped[str] = mapped_column(index=True)
+    message_body: Mapped[str] = mapped_column()
+    donor_name: Mapped[Optional[str]] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    is_processed: Mapped[bool] = mapped_column(default=False)

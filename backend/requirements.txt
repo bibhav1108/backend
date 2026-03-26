@@ -6,7 +6,7 @@ psycopg[binary]
 pydantic-settings==2.2.1
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
-twilio==9.0.4
+python-telegram-bot==21.0.1
 geoalchemy2==0.14.3
 httpx==0.27.0
 email-validator>=2.0.0

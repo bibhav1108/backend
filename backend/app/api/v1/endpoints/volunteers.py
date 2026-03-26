@@ -18,7 +18,8 @@ class VolunteerResponse(BaseModel):
     id: int
     name: str
     phone_number: str
-    whatsapp_active: bool
+    telegram_active: bool
+    telegram_chat_id: Optional[str] = None
     org_id: int
     trust_tier: TrustTier
     
@@ -37,7 +38,7 @@ router = APIRouter()
 
 @router.get("/", response_model=List[VolunteerResponse])
 async def list_volunteers(
-    whatsapp_active: Optional[bool] = None,
+    telegram_active: Optional[bool] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -52,8 +53,8 @@ async def list_volunteers(
         .where(Volunteer.org_id == current_user.org_id)
     )
     
-    if whatsapp_active is not None:
-        stmt = stmt.where(Volunteer.whatsapp_active == whatsapp_active)
+    if telegram_active is not None:
+        stmt = stmt.where(Volunteer.telegram_active == telegram_active)
         
     result = await db.execute(stmt)
     
@@ -89,7 +90,7 @@ async def register_volunteer(
         org_id=current_user.org_id,
         name=data.name,
         phone_number=data.phone_number,
-        whatsapp_active=False,
+        telegram_active=False,
         skills=data.skills,
         zone=data.zone
     )
