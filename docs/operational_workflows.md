@@ -61,41 +61,54 @@ sequenceDiagram
 
 ---
 
-## 🟡 Version 1.5: Trust & Track (Enhanced Manual)
-*Goal: Multi-NGO isolation and basic volunteer accountability data.*
+## 🟡 Version 1.5 & 1.6: Trust & Track (Donor Link)
+*Goal: Multi-NGO isolation and Donor-side verification flow.*
 
-### 🗺️ Operational Flow (Marketplace & NGO Isolation)
+### 🗺️ Operational Flow (Donor-Bot Integration)
 ```mermaid
 sequenceDiagram
     actor Donor
-    actor NGO_Admin
-    actor Coordinator
+    actor Bot
     actor Backend
+    actor NGO_Admin
     actor Volunteer
 
-    NGO_Admin->>Backend: 🔑 Register NGO + First Admin (Atomic)
-    Donor->>Backend: 🏨 Alert surplus/need (Global Marketplace)
+    Donor->>Bot: 🎁 Click "Donate Surplus"
+    Bot->>Donor: 📋 Request Format: [Item][Qty][Loc]
+    Donor->>Bot: 📝 Sends Details
+    Bot->>Backend: 📡 Log SurplusAlert
     
-    Note over Coordinator, Backend: First-Come-First-Serve
-    Coordinator->>Backend: 🖐️ Claims Global Need for own NGO
-    Backend->>Backend: 🔒 Assigns org_id & Isolates record
+    NGO_Admin->>Backend: 🖐️ Claim Alert (Dashboard)
+    Backend->>Backend: 📝 Convert to "Need" (org_id isolated)
     
-    Coordinator->>Backend: 🔍 Views Volunteer Dashboard (Stats-Aware)
-    Backend->>Coordinator: 📊 Shows [Completions/No-Shows]
-    Coordinator->>Backend: 🛡️ Manages Trust Tier (Verified Flags)
+    NGO_Admin->>Backend: 🎫 Dispatch Volunteer
+    Backend->>Volunteer: 📱 Mission Alert (Bot)
+    Volunteer->>Bot: ✅ Accept
+    Bot->>Volunteer: 🎫 Provides 6-digit OTP
     
-    Coordinator->>Backend: 📝 Creates Private Need (Org-scoped)
+    Backend->>Donor: 🚚 Notify: Volunteer [Name] is coming
+    Volunteer->>Donor: 🚗 Arrives at Location
+    
+    Donor->>Bot: 🔢 Type "CONFIRM <CODE>"
+    Bot->>Backend: 📡 Verify OTP & Mark Complete
+    Backend->>Donor: ✅ "Thank you! Impact Recorded"
+    Backend->>Volunteer: 🎉 "Mission Successful (+1 Stats)"
 ```
 
-### 🧩 Subparts & Components: V1.5
+### 🧩 Subparts & Components: V1.5/1.6
 | Subpart | Component | Details |
 | :--- | :--- | :--- |
 | **Onboarding** | NGO Registration | Atomic `POST /register` to create Org + Creator. |
 | **Marketplace** | Claiming Engine | FCFS mechanism for global donation alerts. |
-| **Data Isolation** | Multi-Tenancy | Every query strictly filtered by `org_id`. |
-| **Volunteer Trust** | 3-Tier System | `UNVERIFIED` -> `ID_VERIFIED` -> `FIELD_VERIFIED`. |
+| **Donor Bot** | 🎁 Donate Surplus | Specialized button and formatted reporting UI. |
+| **Verification** | `CONFIRM <CODE>` | Donor-side OTP verification via standard command. |
+| **Volunteer Trust**| 3-Tier System | `UNVERIFIED` -> `ID_VERIFIED` -> `FIELD_VERIFIED`. |
 | **Stats tracking** | Auto-Stats | Automatic `completions` and `no_shows` counters. |
-| **Resource Ledger**| Inventory | NGO-scoped tracking for food, kits, and supplies. |
+| **Menu Sync** | Automated Ops | Bot menu automatically syncs via `setMyCommands`. |
+
+---
+
+---
 
 ---
 
