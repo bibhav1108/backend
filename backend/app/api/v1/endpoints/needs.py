@@ -18,6 +18,7 @@ class NeedCreate(BaseModel):
     urgency: Urgency = Urgency.MEDIUM
     pickup_deadline: Optional[datetime] = None
     org_id: Optional[int] = None  # Optional for donor/public alerts
+    surplus_alert_id: Optional[int] = None  # To link with Telegram bot alerts
 
 class NeedResponse(BaseModel):
     id: int
@@ -28,6 +29,7 @@ class NeedResponse(BaseModel):
     pickup_address: str
     urgency: Urgency
     status: NeedStatus
+    surplus_alert_id: Optional[int]
     pickup_deadline: Optional[datetime]
     created_at: datetime
 

@@ -112,6 +112,7 @@ class Need(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     org_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id"), nullable=True)
+    surplus_alert_id: Mapped[Optional[int]] = mapped_column(ForeignKey("surplus_alerts.id"), nullable=True)
     type: Mapped[NeedType] = mapped_column(SQLEnum(NeedType))
     description: Mapped[str] = mapped_column()
     quantity: Mapped[str] = mapped_column()  # e.g., "50 packets"

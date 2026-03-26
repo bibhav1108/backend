@@ -58,6 +58,7 @@ async def run_migrations():
         
         # Needs
         await conn.execute(text("ALTER TABLE needs ADD COLUMN IF NOT EXISTS org_id INTEGER REFERENCES organizations(id);"))
+        await conn.execute(text("ALTER TABLE needs ADD COLUMN IF NOT EXISTS surplus_alert_id INTEGER REFERENCES surplus_alerts(id);"))
         
         print("[Migrations] Done.")
 

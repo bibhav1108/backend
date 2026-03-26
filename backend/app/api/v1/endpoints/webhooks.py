@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from backend.app.database import get_db
-from backend.app.models import Volunteer, Dispatch, DispatchStatus, SurplusAlert, Organization
+from backend.app.models import Volunteer, Dispatch, DispatchStatus, SurplusAlert, Organization, Need
 from backend.app.services.otp import generate_otp_pair
 from backend.app.services.telegram_service import telegram_service
 
@@ -48,6 +48,21 @@ async def telegram_webhook(
                         chat_id=chat_id,
                         text=f"🎫 *Mission Confirmed!*\n\nYour Pickup CODE is: `{raw_code}`\nValid for 45 mins."
                     )
+                    
+                    # --- Notify Donor if applicable ---
+                    stmt_need = select(Need).where(Need.id == dispatch.need_id)
+                    need = (await db.execute(stmt_need)).scalar_one_or_none()
+                    if need and need.surplus_alert_id:
+                        stmt_alert = select(SurplusAlert).where(SurplusAlert.id == need.surplus_alert_id)
+                        alert = (await db.execute(stmt_alert)).scalar_one_or_none()
+                        if alert:
+                            donor_msg = (
+                                f"🚚 *Volunteer On The Way!*\n\n"
+                                f"Volunteer *{volunteer.name}* has accepted your donation pickup.\n"
+                                f"Please ask them for their *6-digit verification code* and reply here with:\n\n"
+                                f"`CONFIRM <CODE>` (e.g., `CONFIRM 123456`)"
+                            )
+                            await telegram_service.send_message(chat_id=alert.chat_id, text=donor_msg)
             return {"status": "callback_handled"}
 
         if "message" not in data:
@@ -70,7 +85,10 @@ async def telegram_webhook(
                 )
             else:
                 keyboard = {
-                    "keyboard": [[{"text": "📱 Share Contact to Verify", "request_contact": True}]],
+                    "keyboard": [
+                        [{"text": "📱 I am a Volunteer", "request_contact": True}],
+                        [{"text": "🎁 Donate Surplus"}]
+                    ],
                     "one_time_keyboard": True,
                     "resize_keyboard": True
                 }
@@ -78,9 +96,9 @@ async def telegram_webhook(
                     chat_id=chat_id,
                     text=(
                         "Welcome to *Sahyog Setu*! 🤝\n\n"
-                        "To start receiving mission alerts, please choose a verification method:\n\n"
-                        "1️⃣ *One-Click*: Click the button below to share your verified contact.\n"
-                        "2️⃣ *Manual*: Type `ACTIVATE <PHONE_NUMBER>` (e.g., `ACTIVATE 9876543210`) if you prefer manual entry."
+                        "To start, please choose your role below:\n\n"
+                        "🙋‍♂️ *Volunteer*: Click the button to verify and start receiving missions.\n"
+                        "🎁 *Donor*: Click to report surplus items for local NGOs."
                     ),
                     reply_markup=keyboard
                 )
@@ -113,6 +131,62 @@ async def telegram_webhook(
             else:
                 await telegram_service.send_message(chat_id=chat_id, text="❌ Profile not found.")
             return {"status": "status_sent"}
+
+        if text == "🎁 Donate Surplus":
+            instr = (
+                "📦 *Great! Reporting Surplus Items*\n\n"
+                "To help local NGOs coordinate better, please send your donation details in this format:\n\n"
+                "`[ITEM] [QUANTITY] [LOCATION] [ANY NOTES]`\n\n"
+                "*Example*: `Rice 50kg Sector 15 Near Park. Ready for pickup till 8 PM.`"
+            )
+            await telegram_service.send_message(chat_id=chat_id, text=instr)
+            return {"status": "donor_instructed"}
+
+        # --- 2.6 Handle Donor CONFIRM command ---
+        if text.upper().startswith("CONFIRM"):
+            parts = text.split()
+            if len(parts) > 1:
+                otp_code = parts[1].strip()
+                # Find the dispatch linked to this donor's alert
+                stmt = (
+                    select(Dispatch)
+                    .join(Need, Dispatch.need_id == Need.id)
+                    .join(SurplusAlert, Need.surplus_alert_id == SurplusAlert.id)
+                    .where(SurplusAlert.chat_id == chat_id, Dispatch.otp_used == False)
+                    .order_by(Dispatch.created_at.desc())
+                )
+                from backend.app.services.otp import verify_otp
+                result = await db.execute(stmt)
+                dispatch = result.scalar_one_or_none()
+                
+                if dispatch:
+                    if verify_otp(otp_code, dispatch.otp_hash):
+                        dispatch.otp_used = True
+                        dispatch.status = DispatchStatus.CONFIRMED
+                        
+                        need_stmt = select(Need).where(Need.id == dispatch.need_id)
+                        need = (await db.execute(need_stmt)).scalar_one()
+                        from backend.app.models import NeedStatus
+                        need.status = NeedStatus.COMPLETED
+                        
+                        await db.commit()
+                        await telegram_service.send_message(
+                            chat_id=chat_id,
+                            text="✅ *Mission Complete!* Thank you for your donation. Your impact has been recorded. 🙏"
+                        )
+                        return {"status": "donor_verified"}
+                    else:
+                        await telegram_service.send_message(
+                            chat_id=chat_id,
+                            text="❌ *Invalid Code*. Please check the code provided by the volunteer."
+                        )
+                        return {"status": "donor_verify_failed"}
+                else:
+                    await telegram_service.send_message(
+                        chat_id=chat_id,
+                        text="❌ *No active mission* found for your donation alerts."
+                    )
+                    return {"status": "no_active_mission"}
 
         # --- 2.5 Handle Manual ACTIVATE command ---
         if text.upper().startswith("ACTIVATE"):
