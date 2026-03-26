@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from backend.app.database import get_db
-from backend.app.models import Need, Organization, NeedType, NeedStatus, Urgency, User
+from backend.app.models import Need, Organization, NeedType, NeedStatus, Urgency, User , SurplusAlert
 from backend.app.api.deps import get_current_user, get_current_user_optional
+from backend.app.services.telegram_service import telegram_service
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import List, Optional
@@ -115,6 +116,23 @@ async def claim_need(
     # Log the claim in real world would be good
     await db.commit()
     await db.refresh(need)
+
+    # Notify Donor if linked
+    if need.surplus_alert_id:
+        stmt_alert = select(SurplusAlert).where(SurplusAlert.id == need.surplus_alert_id)
+        alert = (await db.execute(stmt_alert)).scalar_one_or_none()
+        if alert:
+            stmt_org = select(Organization).where(Organization.id == current_user.org_id)
+            org = (await db.execute(stmt_org)).scalar_one_or_none()
+            org_name = org.name if org else "A local NGO"
+            
+            msg = (
+                f"📢 *Update on your Donation!*\n\n"
+                f"NGO *{org_name}* has claimed your surplus report! 🤝\n"
+                f"They are now assigning a volunteer for the pickup. Please stay tuned for the next update."
+            )
+            await telegram_service.send_message(chat_id=alert.chat_id, text=msg)
+
     return need
 @router.get("/surplus-alerts", response_model=List[SurplusAlertResponse])
 async def list_surplus_alerts(
@@ -146,4 +164,17 @@ async def mark_alert_processed(
         
     alert.is_processed = True
     await db.commit()
+
+    # Notify Donor
+    stmt_org = select(Organization).where(Organization.id == current_user.org_id)
+    org = (await db.execute(stmt_org)).scalar_one_or_none()
+    org_name = org.name if org else "A local NGO"
+
+    msg = (
+        f"📢 *NGO Interested!*\n\n"
+        f"*{org_name}* is reviewing your surplus report. 🤝\n"
+        f"They will assign a volunteer shortly if the items match their needs."
+    )
+    await telegram_service.send_message(chat_id=alert.chat_id, text=msg)
+
     return {"status": "success", "message": "Alert marked as processed"}
