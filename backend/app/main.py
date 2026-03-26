@@ -17,6 +17,7 @@ from backend.app.api.v1.endpoints.auth import router as auth_router
 from backend.app.api.v1.endpoints.inventory import router as inventory_router
 from backend.app.api.v1.endpoints.organizations import router as organizations_router
 from backend.app.api.v1.endpoints.meta import router as meta_router
+from backend.app.services.telegram_service import telegram_service
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI):
         # Add missing columns (Incremental migration)
         from backend.app.database import run_migrations
         await run_migrations()
+        await telegram_service.set_bot_commands()
         
         print("[Lifespan] Database tables created/verified successfully.")
 

@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, Request
 import traceback
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
 from backend.app.database import get_db
-from backend.app.models import Volunteer, Dispatch, DispatchStatus, SurplusAlert, Organization, Need
+from backend.app.models import Volunteer, Dispatch, DispatchStatus, SurplusAlert, Organization, Need, VolunteerStats
 from backend.app.services.otp import generate_otp_pair
 from backend.app.services.telegram_service import telegram_service
 
@@ -114,25 +114,86 @@ async def telegram_webhook(
             await telegram_service.send_message(chat_id=chat_id, text=help_text)
             return {"status": "help_sent"}
 
-        if text == "/status":
-            stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
+        if text == "/leaderboard":
+            # Fetch top 5 volunteers by completions
+            stmt = (
+                select(Volunteer, VolunteerStats)
+                .join(VolunteerStats, Volunteer.id == VolunteerStats.volunteer_id)
+                .order_by(desc(VolunteerStats.completions))
+                .limit(5)
+            )
+            results = (await db.execute(stmt)).all()
+            
+            if results:
+                leaderboard_text = "🏆 *Volunteer Leaderboard*\n\n"
+                for i, (vol, stats) in enumerate(results, 1):
+                    medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🎖"
+                    leaderboard_text += f"{medal} *{vol.name}*: `{stats.completions}` completions\n"
+                await telegram_service.send_message(chat_id=chat_id, text=leaderboard_text)
+            else:
+                await telegram_service.send_message(chat_id=chat_id, text="🏆 Leaderboard is empty. Be the first to complete a mission!")
+            return {"status": "leaderboard_sent"}
+
+        if text == "/my_missions" or text == "/status":
+            stmt = (
+                select(Volunteer)
+                .where(Volunteer.telegram_chat_id == chat_id)
+                .options(selectinload(Volunteer.stats))
+            )
             volunteer = (await db.execute(stmt)).scalar_one_or_none()
             
             if volunteer:
+                stats = volunteer.stats
                 status_report = (
                     f"👤 *Volunteer Profile*\n"
                     f"Name: {volunteer.name}\n"
                     f"Trust Tier: `{volunteer.trust_tier.name}`\n"
-                    f"Completions: `{volunteer.completions}`\n"
-                    f"No-Shows: `{volunteer.no_shows}`\n\n"
+                    f"Completions: `{stats.completions if stats else 0}`\n"
+                    f"No-Shows: `{stats.no_shows if stats else 0}`\n\n"
                     f"Status: *{'Active' if volunteer.telegram_active else 'Inactive'}*"
                 )
                 await telegram_service.send_message(chat_id=chat_id, text=status_report)
             else:
-                await telegram_service.send_message(chat_id=chat_id, text="❌ Profile not found.")
+                await telegram_service.send_message(chat_id=chat_id, text="❌ Profile not found. Are you registered as a volunteer?")
             return {"status": "status_sent"}
 
-        if text == "🎁 Donate Surplus":
+        if text == "/about":
+            about_text = (
+                "ℹ️ *About Sahyog Setu*\n\n"
+                "Sahyog Setu is an AI-powered logistics bridge connecting surplus food from donors to NGOs in real-time.\n\n"
+                "🌍 *Mission*: Zero Hunger through efficient distribution.\n"
+                "🤝 *Partners*: Helping local NGOs scale their impact with secure tracking and volunteer coordination."
+            )
+            await telegram_service.send_message(chat_id=chat_id, text=about_text)
+            return {"status": "about_sent"}
+
+        if text == "/tutorial":
+            tutorial_text = (
+                "📖 *How to use Sahyog Setu*\n\n"
+                "1️⃣ **For Volunteers**: Register via `/start`, click 'I am a Volunteer', and share your contact. You'll receive mission alerts. Click 'Accept', get the OTP, and provide it at the pickup point.\n\n"
+                "2️⃣ **For Donors**: Click '🎁 Donate Surplus', follow the instructions to report items. Wait for notification when a volunteer is nearby, and verify them using `CONFIRM <CODE>`."
+            )
+            await telegram_service.send_message(chat_id=chat_id, text=tutorial_text)
+            return {"status": "tutorial_sent"}
+
+        if text == "/cancel":
+            # Cancel the latest active dispatch for this volunteer
+            stmt = (
+                select(Dispatch)
+                .join(Volunteer, Dispatch.volunteer_id == Volunteer.id)
+                .where(Volunteer.telegram_chat_id == chat_id, Dispatch.status == DispatchStatus.SENT)
+                .order_by(desc(Dispatch.created_at))
+            )
+            dispatch = (await db.execute(stmt)).scalar_one_or_none()
+            if dispatch:
+                dispatch.status = DispatchStatus.FAILED
+                await db.commit()
+                await telegram_service.send_message(chat_id=chat_id, text="⚠️ *Mission Cancelled*. Please avoid cancellations as they affect your Trust Tier.")
+            else:
+                await telegram_service.send_message(chat_id=chat_id, text="❌ No active missions found to cancel.")
+            return {"status": "cancel_handled"}
+
+        if text == "/donate" or text == "🎁 Donate Surplus":
             instr = (
                 "📦 *Great! Reporting Surplus Items*\n\n"
                 "To help local NGOs coordinate better, please send your donation details in this format:\n\n"

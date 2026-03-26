@@ -43,4 +43,30 @@ class TelegramService:
                 logger.error(f"[Telegram ERROR] Exception sending message: {e}")
                 return False
 
+    async def set_bot_commands(self) -> bool:
+        """
+        Register standard bot commands for the Telegram Menu button.
+        """
+        if not self.api_url:
+            return False
+            
+        url = f"{self.api_url}/setMyCommands"
+        payload = {
+            "commands": [
+                {"command": "start", "description": "🚀 Main interactive menu"},
+                {"command": "leaderboard", "description": "🏆 Top volunteers"},
+                {"command": "my_missions", "description": "👤 Profile & trust stats"},
+                {"command": "about", "description": "ℹ️ About Sahyog Setu"},
+                {"command": "donate", "description": "🎁 Report surplus food"},
+                {"command": "help", "description": "🆘 Get assistance"}
+            ]
+        }
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload)
+            if response.status_code == 200:
+                logger.info("[Telegram] Bot commands sync successful.")
+                return True
+            logger.error(f"[Telegram] Commands sync failed: {response.text}")
+            return False
+
 telegram_service = TelegramService()
