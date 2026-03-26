@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
 from backend.app.database import get_db
-from backend.app.models import Volunteer, Dispatch, DispatchStatus, SurplusAlert, Organization, Need, VolunteerStats
+from backend.app.models import Volunteer, Dispatch, DispatchStatus, SurplusAlert, Organization, Need, VolunteerStats, NeedStatus
 from backend.app.services.otp import generate_otp_pair
 from backend.app.services.telegram_service import telegram_service
 import os
@@ -391,9 +391,7 @@ async def telegram_webhook(
                         dispatch.otp_used = True
                         dispatch.status = DispatchStatus.CONFIRMED
                         
-                        need_stmt = select(Need).where(Need.id == dispatch.need_id)
                         need = (await db.execute(need_stmt)).scalar_one()
-                        from backend.app.models import NeedStatus
                         need.status = NeedStatus.COMPLETED
                         
                         await db.commit()
