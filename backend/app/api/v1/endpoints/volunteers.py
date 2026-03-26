@@ -62,7 +62,7 @@ async def list_volunteers(
     for row in result:
         v, comp, noshow = row
         # Map to Response model manually because of the join
-        resp = VolunteerResponse.from_orm(v)
+        resp = VolunteerResponse.model_validate(v)
         resp.completions = comp
         resp.no_shows = noshow
         vols.append(resp)
@@ -105,7 +105,7 @@ async def register_volunteer(
     await db.refresh(volunteer)
     
     # Return with default 0 stats
-    resp = VolunteerResponse.from_orm(volunteer)
+    resp = VolunteerResponse.model_validate(volunteer)
     resp.completions = 0
     resp.no_shows = 0
     return resp

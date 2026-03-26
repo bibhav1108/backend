@@ -20,16 +20,22 @@ async def create_test_volunteer():
             print(f"Test Volunteer with {test_phone} already exists.")
             return
 
+        from app.models import VolunteerStats
         new_v = Volunteer(
             name="Test Volunteer",
             phone_number=test_phone,
-            email="test@sahyogsetu.org",
-            organization_id=1,
+            org_id=1,
             telegram_active=False
         )
         db.add(new_v)
+        await db.flush() # Populate ID
+
+        # Initialize Stats (CRITICAL for joins)
+        stats = VolunteerStats(volunteer_id=new_v.id)
+        db.add(stats)
+        
         await db.commit()
-        print(f"CREATED: {new_v.name} | PHONE: {new_v.phone_number}")
+        print(f"CREATED: {new_v.name} | PHONE: {new_v.phone_number} | STATS INITIALIZED")
         break
 
 if __name__ == "__main__":

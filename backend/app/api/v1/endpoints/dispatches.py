@@ -28,7 +28,7 @@ async def create_dispatch(
 ):
     """
     Coordinator manually selects a volunteer and triggers dispatch broadcast.
-    Saves Dispatch status as 'SENT' and alerts Volunteer over WhatsApp.
+    Saves Dispatch status as 'SENT' and alerts Volunteer over Telegram.
     """
     # 1. Verify Need exists and belongs to NGO
     need_stmt = select(Need).where(
@@ -73,7 +73,7 @@ async def create_dispatch(
     await db.commit()
     await db.refresh(dispatch)
 
-    # 4. Fire Twilio Notify
+    # 4. Fire Telegram Notification
     body = (
         f"*Sahyog Setu - New Mission ALERT*\n\n"
         f"You have been dispatched to match a target need:\n"
