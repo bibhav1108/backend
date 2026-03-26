@@ -18,12 +18,10 @@ from backend.app.api.v1.endpoints.auth import router as auth_router
 from backend.app.api.v1.endpoints.inventory import router as inventory_router
 from backend.app.api.v1.endpoints.organizations import router as organizations_router
 from backend.app.api.v1.endpoints.meta import router as meta_router
-from backend.app.services.telegram_service import telegram_service
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Create tables on startup (For development/MVP setup)
-    # In production, we'd use Alembic. 
     try:
         from sqlalchemy import text
         async with engine.begin() as conn:
@@ -34,10 +32,10 @@ async def lifespan(app: FastAPI):
         from backend.app.database import run_migrations
         await run_migrations()
         # Sync Telegram Bot Commands (Public Default)
+        from backend.app.services.telegram_service import telegram_service
         await telegram_service.set_bot_commands()
         
         print("[Lifespan] Database tables created/verified successfully.")
-
     except Exception as e:
         print(f"[Lifespan WARNING] Database connection or creation failed: {e}")
         print("[Lifespan WARNING] Continuing boot for endpoint route verification purposes.")
@@ -45,6 +43,7 @@ async def lifespan(app: FastAPI):
     yield
     
     # Graceful Shutdown
+    from backend.app.services.telegram_service import telegram_service
     await telegram_service.close()
     print("[Lifespan] Telegram service client closed.")
 
