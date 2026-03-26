@@ -39,7 +39,7 @@ async def telegram_webhook(
                 dispatch = (await db.execute(stmt)).scalar_one_or_none()
                 
                 if dispatch and dispatch.status == DispatchStatus.SENT:
-                    dispatch.status = DispatchStatus.CONFIRMED
+                    dispatch.status = DispatchStatus.ACCEPTED
                     raw_code, hashed, expires_at = generate_otp_pair()
                     dispatch.otp_hash = hashed
                     dispatch.otp_expires_at = expires_at
