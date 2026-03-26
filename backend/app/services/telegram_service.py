@@ -2,6 +2,7 @@ import httpx
 from backend.app.config import settings
 from typing import Optional
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,10 @@ class TelegramService:
             "parse_mode": parse_mode
         }
         if reply_markup:
-            payload["reply_markup"] = reply_markup
+            if isinstance(reply_markup, dict):
+                payload["reply_markup"] = json.dumps(reply_markup)
+            else:
+                payload["reply_markup"] = reply_markup
 
         async with httpx.AsyncClient() as client:
             try:
