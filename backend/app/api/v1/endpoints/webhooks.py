@@ -67,17 +67,27 @@ async def telegram_webhook(
             
             # --- Role Selection Callbacks ---
             if data_payload == "join_volunteer":
-                # Show the share contact button
-                kb = {
-                    "keyboard": [[{"text": "📱 Share Contact to Verify", "request_contact": True}]],
-                    "one_time_keyboard": True,
-                    "resize_keyboard": True
-                }
-                await telegram_service.send_message(
-                    chat_id=chat_id,
-                    text="Great! To link your volunteer account, please click the button below to share your contact details with us.",
-                    reply_markup=kb
-                )
+                # Check if already active
+                stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
+                volunteer = (await db.execute(stmt)).scalar_one_or_none()
+                
+                if volunteer and volunteer.telegram_active:
+                    await telegram_service.send_message(
+                        chat_id=chat_id,
+                        text=f"✅ *Already Verified!*\n\nWelcome back, *{volunteer.name}*! You are already linked and ready for missions. 🚀"
+                    )
+                else:
+                    # Show the share contact button
+                    kb = {
+                        "keyboard": [[{"text": "📱 Share Contact to Verify", "request_contact": True}]],
+                        "one_time_keyboard": True,
+                        "resize_keyboard": True
+                    }
+                    await telegram_service.send_message(
+                        chat_id=chat_id,
+                        text="Great! To link your volunteer account, please click the button below to share your contact details with us.",
+                        reply_markup=kb
+                    )
                 
             if data_payload == "donate_surplus":
                 # Check if we already have this donor's contact
