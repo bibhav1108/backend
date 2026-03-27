@@ -1,19 +1,62 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, BackgroundTasks
 import traceback
+from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, delete
 from sqlalchemy.orm import selectinload
 from backend.app.database import get_db
-from backend.app.models import Volunteer, Dispatch, DispatchStatus, SurplusAlert, Organization, Need, VolunteerStats, NeedStatus
+from backend.app.models import Volunteer, Dispatch, DispatchStatus, SurplusAlert, Organization, Need, VolunteerStats, NeedStatus, TelegramMessage
 from backend.app.services.otp import generate_otp_pair
 from backend.app.services.telegram_service import telegram_service
 import os
 
 router = APIRouter()
 
+async def log_telegram_message(db: AsyncSession, chat_id: str, message_id: int):
+    """Save message ID to DB for 24h cleanup."""
+    try:
+        msg = TelegramMessage(chat_id=chat_id, message_id=message_id)
+        db.add(msg)
+        await db.commit()
+    except Exception as e:
+        print(f"[ERROR] Failed to log telegram message: {e}")
+
+async def send_and_log(db: AsyncSession, bg: BackgroundTasks, chat_id: str, text: str, **kwargs) -> Optional[int]:
+    msg_id = await telegram_service.send_message(chat_id, text, **kwargs)
+    if msg_id:
+        bg.add_task(log_telegram_message, db, chat_id, msg_id)
+    return msg_id
+
+async def send_photo_and_log(db: AsyncSession, bg: BackgroundTasks, chat_id: str, photo_path: str, caption: str = "", **kwargs) -> Optional[int]:
+    msg_id = await telegram_service.send_photo(chat_id, photo_path, caption, **kwargs)
+    if msg_id:
+        bg.add_task(log_telegram_message, db, chat_id, msg_id)
+    return msg_id
+
+async def cleanup_old_messages(db: AsyncSession):
+    """Delete messages older than 24 hours from Telegram and DB."""
+    try:
+        cutoff = datetime.utcnow() - timedelta(hours=24)
+        stmt = select(TelegramMessage).where(TelegramMessage.created_at < cutoff)
+        result = await db.execute(stmt)
+        old_msgs = result.scalars().all()
+        
+        for msg in old_msgs:
+            # Attempt to delete from Telegram
+            await telegram_service.delete_message(msg.chat_id, msg.message_id)
+            # Delete from DB
+            await db.delete(msg)
+        
+        if old_msgs:
+            await db.commit()
+            print(f"[INFO] Cleaned up {len(old_msgs)} old telegram messages.")
+    except Exception as e:
+        print(f"[ERROR] Cleanup failed: {e}")
+
 @router.post("/telegram")
 async def telegram_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -136,7 +179,15 @@ async def telegram_webhook(
 
         message = data["message"]
         chat_id = str(message["chat"]["id"])
+        message_id = message.get("message_id")
         text = message.get("text", "").strip()
+        
+        # Log incoming message
+        if message_id:
+            background_tasks.add_task(log_telegram_message, db, chat_id, message_id)
+        
+        # Trigger cleanup background task
+        background_tasks.add_task(cleanup_old_messages, db)
         
         # --- 2. Handle /start and Help ---
         if text == "/start":
