@@ -113,43 +113,72 @@ sequenceDiagram
 
 ---
 
-## 🟠 Version 2.0: Smart Dispatch (AI-Assisted)
-*Goal: PostGIS mapping and Gemini NLP parsing to reduce coordinator load.*
+## 🟠 Version 2.0: Mission Foundation & AI Ingestion
+*Goal: Automate input via AI and structure internal NGO missions (Campaigns).*
 
-### 🗺️ Operational Flow (Automatic Ingestion & Matching)
+### 🗺️ Operational Flow (AI-to-Campaign Lifecycle)
 ```mermaid
 sequenceDiagram
     actor Donor
-    actor Twilio
+    actor Telegram/WhatsApp
     actor Gemini
+    actor NGO_Admin
     actor Backend
-    actor Coordinator
-    actor Volunteer
+    actor Volunteer_Team
 
-    Donor->>Twilio: 📱 Msg: "Surplus Food at 12 MG Road"
-    Twilio->>Backend: 📡 Event trigger
+    Donor->>Telegram/WhatsApp: 📱 Msg: "Surplus Food at 12 MG Road..." (Chat)
+    Telegram/WhatsApp->>Backend: 📡 Event trigger
     Backend->>Gemini: 🧠 Parse Text (LangChain JsonOutputParser)
-    Gemini->>Backend: 📄 Returns Need Card JSON (Type/Qty/Loc)
+    Gemini->>Backend: 📄 Returns Need Card JSON (Type, Qty, Loc)
     
-    Backend->>Backend: 📍 PostGIS Radius Match (Find Nearest)
-    Backend->>Backend: 📊 ML 2-Factor Rank (Proximity + Completion Rate)
-    Backend->>Coordinator: 🔔 Needs Approval Alert (Dashboard Card)
-    Coordinator->>Backend: 👍 Approves recommended Top-1 Choice
+    NGO_Admin->>Backend: 📅 Converts data to a "Campaign" or "Need"
+    Backend->>Backend: 📦 Inventory Reservation (Automatic)
     
-    Backend->>Telegram: 🚀 Sequential Top-3 Broadcast Waterfall
-    Volunteer->>Telegram: 👍 Replies "YES" within 5-min slot
-    Telegram->>Backend: 📡 Locks Assignment
+    Backend->>Volunteer_Team: 📣 Broadcast to NGO Volunteers
+    Volunteer_Team->>Backend: ✅ Acceptance (Team Lock)
+    Volunteer_Team->>Backend: 📸 Uploads Activity (Gallery Transparency)
+    NGO_Admin->>Backend: 🏁 Mark Complete → 📉 Deduct Inventory
 ```
 
-### 🧩 Subparts & Components: V2.0
+### 🧩 Subparts & Components: V2.0 (Foundation)
 | Subpart | Component | Details |
 | :--- | :--- | :--- |
-| **WhatsApp AI Parser** | Gemini LLM Node | Translates messy text into strict Pydantic JSON tables containing addresses, weights, types. |
-| | Low Confidence Queue | Low scores go to `requires_review` dashboard queue for manual fix. |
-| **Spatial Matching** | PostGIS GEOMETRY | Spatial query finds candidates within radius in milliseconds; replaces slow app mathematical calculations. |
-| **ML Ranking Model** | 2-Factor Ranker | logistic ranking model measuring ` proximity (40%) + completion logic (60%)`. |
-| **Dispatch Cascade** | Waterfall Cascade | Sequential Telegram firing loop: Volunteer 1 gets trigger; if dead air, trigger Volunteer 2. |
-| **Campaign Mode** | Event slots engine | Structuring events registration, waitlists, morning-of check-ins. |
+| **AI Ingestion** | Gemini LLM Node | Uses `JsonOutputParser` to translate messy user text into structured Campaign/Need input. |
+| **Campaign Engine** | Mission Manager | NGO-isolated mission structure with role definitions and participation slots. |
+| **Inventory Sync** | Resource Locking | Automatic reservation logic: "Locks" NGO stock during PLANNING; Deducts upon COMPLETION. |
+| **Transparency Layer**| Gallery & Proof-of-Work| Volunteer-bot photo uploads generating real-time mission status updates and trust building. |
+
+---
+
+## 🔵 Version 2.1: Strategic Resource Allocation (Optimization)
+*Goal: Intelligent matching using PostGIS spatial queries and ML ranking.*
+
+### 🗺️ Operational Flow (Smart Matching Lifecycle)
+```mermaid
+sequenceDiagram
+    actor Campaign
+    actor Backend
+    actor PostGIS
+    actor ML_Ranker
+    actor Volunteer_Team
+
+    Campaign->>Backend: 🎯 Initiate Team Selection
+    Backend->>PostGIS: 📍 Cluster Match (Find nearest volunteers to mission zone)
+    PostGIS->>Backend: 📄 List of Proximity Candidates
+    
+    Backend->>ML_Ranker: 📊 Score Candidates (Proximity + Completion Rate)
+    ML_Ranker->>Backend: 📄 Ranked Top-X List
+    
+    Backend->>Volunteer_Team: 🚀 Sequential Waterfall Alerting (Top candidates first)
+```
+
+### 🧩 Subparts & Components: V2.1 (Intelligence)
+| Subpart | Component | Details |
+| :--- | :--- | :--- |
+| **Spatial Matching** | PostGIS GEOMETRY | Efficient spatial indexing to find candidates or mission zones within milliseconds. |
+| **ML Ranking Model** | 2-Factor Ranker | Logistic ranking measuring `proximity (40%) + historical completion rate (60%)` for team selection. |
+| **Dispatch Cascade** | Waterfall Alerting | Sequential Telegram firing loop: Alerts Top Tier first; then Tier 2 if slots remain empty. |
+| **Impact Analytics** | Mission Impact Core | Calculating NGO efficiency scores based on time-to-complete and resource-to-impact ratios. |
 
 ---
 
