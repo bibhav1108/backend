@@ -128,8 +128,11 @@ sequenceDiagram
 
     Donor->>Telegram/WhatsApp: 📱 Msg: "Surplus Food at 12 MG Road..." (Chat)
     Telegram/WhatsApp->>Backend: 📡 Event trigger
-    Backend->>Gemini: 🧠 Parse Text (LangChain JsonOutputParser)
-    Gemini->>Backend: 📄 Returns Need Card JSON (Type, Qty, Loc)
+    Backend->>Gemini: 🧠 Parse Text (JsonOutputParser)
+    Gemini->>Backend: 📄 Returns Draft Need (JSON)
+    
+    Backend->>Donor: 🔢 "Is this correct? [Food, 50kg, MG Road] [Confirm/Edit]"
+    Donor->>Backend: ✅ "CONFIRM"
     
     NGO_Admin->>Backend: 📅 Converts data to a "Campaign" or "Need"
     Backend->>Backend: 📦 Inventory Reservation (Automatic)
@@ -144,6 +147,7 @@ sequenceDiagram
 | Subpart | Component | Details |
 | :--- | :--- | :--- |
 | **AI Ingestion** | Gemini LLM Node | Uses `JsonOutputParser` to translate messy user text into structured Campaign/Need input. |
+| **Verification Gate**| Donor Confirmation | Safe AI flow: Sends summary back to donor for approval before creating the official record. |
 | **Campaign Engine** | Mission Manager | NGO-isolated mission structure with role definitions and participation slots. |
 | **Inventory Sync** | Resource Locking | Automatic reservation logic: "Locks" NGO stock during PLANNING; Deducts upon COMPLETION. |
 | **Transparency Layer**| Gallery & Proof-of-Work| Volunteer-bot photo uploads generating real-time mission status updates and trust building. |
