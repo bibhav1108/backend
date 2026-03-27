@@ -507,31 +507,47 @@ async def telegram_webhook(
                 return {"status": "donor_contact_saved"}
 
         # --- 4. Fallback: Donor Flow ---
-        # Identification logic
+        # 1. First check if there's a pending alert (takes precedence for any user)
+        stmt = (
+            select(SurplusAlert)
+            .where(SurplusAlert.chat_id == chat_id, SurplusAlert.message_body == "[Pending Report]")
+            .order_by(desc(SurplusAlert.created_at))
+        )
+        result = await db.execute(stmt)
+        pending_alerts = result.scalars().all()
+        
+        if pending_alerts:
+            # Update the latest one (Works for both Volunteers and Donors)
+            main_alert = pending_alerts[0]
+            main_alert.message_body = text
+            
+            # Cleanup duplicates/spam
+            if len(pending_alerts) > 1:
+                from sqlalchemy import delete
+                extra_ids = [a.id for a in pending_alerts[1:]]
+                await db.execute(delete(SurplusAlert).where(SurplusAlert.id.in_(extra_ids)))
+            
+            await db.commit()
+            await telegram_service.send_message(
+                chat_id=chat_id,
+                text="🙏 *Thank you!* Your surplus report has been shared with local NGOs."
+            )
+            return {"status": "surplus_saved"}
+
+        # 2. If no pending alert, check if this is a known volunteer
         stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
         volunteer = (await db.execute(stmt)).scalar_one_or_none()
         
         if not volunteer:
-            # Check for a pending alert (one created when contact was shared)
-            stmt = (
-                select(SurplusAlert)
-                .where(SurplusAlert.chat_id == chat_id, SurplusAlert.message_body == "[Pending Report]")
-                .order_by(desc(SurplusAlert.created_at))
+            # This is a new donor sending a direct message without being in a pending state
+            # Save as new Surplus Alert
+            alert = SurplusAlert(
+                chat_id=chat_id,
+                message_body=text,
+                donor_name=message.get("from", {}).get("first_name", "Anonymous Donor")
             )
-            pending_alert = (await db.execute(stmt)).scalar_one_or_none()
-            
-            if pending_alert:
-                pending_alert.message_body = text
-                await db.commit()
-            else:
-                # Save as new Surplus Alert
-                alert = SurplusAlert(
-                    chat_id=chat_id,
-                    message_body=text,
-                    donor_name=message.get("from", {}).get("first_name", "Anonymous Donor")
-                )
-                db.add(alert)
-                await db.commit()
+            db.add(alert)
+            await db.commit()
             
             await telegram_service.send_message(
                 chat_id=chat_id,
