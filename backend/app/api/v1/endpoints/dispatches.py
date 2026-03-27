@@ -18,6 +18,17 @@ class VerifyOTPRequest(BaseModel):
     dispatch_id: int
     otp_code: str = Field(..., max_length=6, min_length=6)
 
+class DispatchResponse(BaseModel):
+    id: int
+    need_id: int
+    volunteer_id: int
+    status: DispatchStatus
+    created_at: datetime
+    otp_used: bool
+
+    class Config:
+        from_attributes = True
+
 router = APIRouter()
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
@@ -98,8 +109,32 @@ async def create_dispatch(
 
     return {"message": "Dispatch created and alert fired", "dispatch_id": dispatch.id}
 
-
-@router.post("/verify-otp")
+@router.get("/", response_model=List[DispatchResponse])
+async def list_dispatches(
+    status: Optional[DispatchStatus] = None,
+    volunteer_id: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    List historical dispatches for the current NGO.
+    Filters: status, volunteer_id.
+    """
+    stmt = (
+        select(Dispatch)
+        .join(Need, Dispatch.need_id == Need.id)
+        .where(Need.org_id == current_user.org_id)
+    )
+    
+    if status:
+        stmt = stmt.where(Dispatch.status == status)
+    if volunteer_id:
+        stmt = stmt.where(Dispatch.volunteer_id == volunteer_id)
+        
+    stmt = stmt.order_by(Dispatch.created_at.desc())
+    
+    result = await db.execute(stmt)
+    return result.scalars().all()
 async def verify_dispatch_otp(
     data: VerifyOTPRequest,
     db: AsyncSession = Depends(get_db),
