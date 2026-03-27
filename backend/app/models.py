@@ -167,7 +167,7 @@ class Inventory(Base):
 
     organization: Mapped["Organization"] = relationship(back_populates="inventory")
 
-class SurplusAlert(Base) :
+class SurplusAlert(Base):
     __tablename__ = "surplus_alerts"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
@@ -177,3 +177,11 @@ class SurplusAlert(Base) :
     donor_name: Mapped[Optional[str]] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     is_processed: Mapped[bool] = mapped_column(default=False)
+
+class TelegramMessage(Base):
+    __tablename__ = "telegram_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    chat_id: Mapped[str] = mapped_column(index=True)
+    message_id: Mapped[int] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)

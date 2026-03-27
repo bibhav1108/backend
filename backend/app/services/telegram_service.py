@@ -22,14 +22,13 @@ class TelegramService:
         if self._client and not self._client.is_closed:
             await self._client.aclose()
 
-    async def send_message(self, chat_id: str, text: str, parse_mode: str = "Markdown", reply_markup: Optional[dict] = None) -> bool:
+    async def send_message(self, chat_id: str, text: str, parse_mode: str = "Markdown", reply_markup: Optional[dict] = None) -> Optional[int]:
         """
-        Send a message via Telegram Bot API with optional reply_markup.
+        Send a message via Telegram Bot API and return message_id.
         """
         if not self.api_url:
-            logger.warning("[Telegram LOG] Bot Token missing. Mock message:")
-            logger.info(f"[Telegram LOG] To: {chat_id} | Body: {text} | Markup: {reply_markup}")
-            return True
+            logger.info(f"[Telegram MOCK] To: {chat_id} | Body: {text}")
+            return 999
 
         url = f"{self.api_url}/sendMessage"
         payload = {
@@ -47,74 +46,66 @@ class TelegramService:
         try:
             response = await client.post(url, json=payload)
             if response.status_code == 200:
-                logger.info(f"[Telegram] Message sent to {chat_id}")
-                return True
-            logger.error(f"[Telegram ERROR] Failed to send message: {response.text}")
-            return False
+                data = response.json()
+                msg_id = data.get("result", {}).get("message_id")
+                return msg_id
+            logger.error(f"[Telegram ERROR] Failed: {response.text}")
+            return None
         except Exception as e:
-            logger.error(f"[Telegram ERROR] Exception sending message: {e}")
-            return False
+            logger.error(f"[Telegram ERROR] Exception: {e}")
+            return None
 
-    async def send_photo(self, chat_id: str, photo_path: str, caption: str = "", reply_markup: Optional[dict] = None) -> bool:
+    async def send_photo(self, chat_id: str, photo_path: str, caption: str = "", reply_markup: Optional[dict] = None) -> Optional[int]:
         """
-        Send a photo to a chat with an optional caption and keyboard.
+        Send a photo and return message_id if successful.
         """
         if not self.api_url:
-            logger.warning("[Telegram LOG] Bot Token missing. Mock photo message:")
-            logger.info(f"[Telegram LOG] To: {chat_id} | Photo: {photo_path} | Caption: {caption} | Markup: {reply_markup}")
-            return True # Changed to True for mock success
+            logger.info(f"[Telegram MOCK] Photo to {chat_id}")
+            return 888
 
         url = f"{self.api_url}/sendPhoto"
-        
-        # Determine if photo_path is a URL or a local file
-        if photo_path.startswith("http"):
-            payload = {
-                "chat_id": chat_id,
-                "photo": photo_path,
-                "caption": caption,
-                "parse_mode": "Markdown"
-            }
-            if reply_markup:
-                payload["reply_markup"] = json.dumps(reply_markup) # Ensure reply_markup is dumped to JSON
-                
-            client = self._get_client()
-            try:
+        client = self._get_client()
+
+        try:
+            if photo_path.startswith("http"):
+                payload = {"chat_id": chat_id, "photo": photo_path, "caption": caption, "parse_mode": "Markdown"}
+                if reply_markup:
+                    payload["reply_markup"] = json.dumps(reply_markup)
                 response = await client.post(url, json=payload)
-                if response.status_code == 200:
-                    logger.info(f"[Telegram] Photo sent to {chat_id} from URL: {photo_path}")
-                    return True
-                logger.error(f"[Telegram ERROR] Failed to send photo from URL: {response.text}")
-                return False
-            except Exception as e:
-                logger.error(f"[Telegram ERROR] Exception sending photo from URL: {e}")
-                return False
-        else:
-            # Handle local file upload
-            if not os.path.exists(photo_path):
-                logger.error(f"[Telegram ERROR] Local photo not found: {photo_path}")
-                return False
-                
-            client = self._get_client()
-            try:
+            else:
+                if not os.path.exists(photo_path):
+                    return None
                 with open(photo_path, "rb") as f:
-                    files = {"photo": f}
-                    data = {
-                        "chat_id": chat_id,
-                        "caption": caption,
-                        "parse_mode": "Markdown"
-                    }
+                    data = {"chat_id": chat_id, "caption": caption, "parse_mode": "Markdown"}
                     if reply_markup:
                         data["reply_markup"] = json.dumps(reply_markup)
-                        
-                    response = await client.post(url, data=data, files=files)
-                    if response.status_code == 200:
-                        logger.info(f"[Telegram] Photo sent to {chat_id} from local file: {photo_path}")
-                        return True
-                    logger.error(f"[Telegram ERROR] Failed to send local photo: {response.text}")
-                    return False
-            except Exception as e:
-                logger.error(f"[Telegram ERROR] Exception sending local photo: {e}")
-                return False
+                    response = await client.post(url, data=data, files={"photo": f})
+
+            if response.status_code == 200:
+                data = response.json()
+                msg_id = data.get("result", {}).get("message_id")
+                return msg_id
+            return None
+        except Exception as e:
+            logger.error(f"[Telegram ERROR] Photo Exception: {e}")
+            return None
+
+    async def delete_message(self, chat_id: str, message_id: int) -> bool:
+        """
+        Delete a message from a chat.
+        """
+        if not self.api_url:
+            return True
+            
+        url = f"{self.api_url}/deleteMessage"
+        payload = {"chat_id": chat_id, "message_id": message_id}
+        
+        client = self._get_client()
+        try:
+            response = await client.post(url, json=payload)
+            return response.status_code == 200
+        except Exception:
+            return False
 
     async def set_bot_commands(self, chat_id: Optional[str] = None) -> bool:
         """

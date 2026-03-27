@@ -45,7 +45,7 @@ async def telegram_webhook(
                     dispatch.otp_expires_at = expires_at
                     await db.commit()
                     
-                    await telegram_service.send_message(
+                    await send_and_log(db=db, bg=background_tasks, 
                         chat_id=chat_id,
                         text=f"🎫 *Mission Confirmed!*\n\nYour Pickup CODE is: `{raw_code}`\nValid for 45 mins."
                     )
@@ -75,7 +75,7 @@ async def telegram_webhook(
             
             if data_payload.startswith("confirm_pickup_"):
                 dispatch_id = int(data_payload.split("_")[2])
-                await telegram_service.send_message(
+                await send_and_log(db=db, bg=background_tasks, 
                     chat_id=chat_id,
                     text=f"📋 *Verification Required*\n\nPlease enter the *6-digit code* provided by the volunteer to complete the pickup for Mission `#{dispatch_id}`."
                 )
@@ -87,7 +87,7 @@ async def telegram_webhook(
                 volunteer = (await db.execute(stmt)).scalar_one_or_none()
                 
                 if volunteer and volunteer.telegram_active:
-                    await telegram_service.send_message(
+                    await send_and_log(db=db, bg=background_tasks, 
                         chat_id=chat_id,
                         text=f"✅ *Already Verified!*\n\nWelcome back, *{volunteer.name}*! You are already linked and ready for missions. 🚀"
                     )
@@ -98,7 +98,7 @@ async def telegram_webhook(
                         "one_time_keyboard": True,
                         "resize_keyboard": True
                     }
-                    await telegram_service.send_message(
+                    await send_and_log(db=db, bg=background_tasks, 
                         chat_id=chat_id,
                         text="Great! To link your volunteer account, please click the button below to share your contact details with us.",
                         reply_markup=kb
@@ -116,10 +116,10 @@ async def telegram_webhook(
                         "`[ITEM] [QUANTITY] [LOCATION] [ANY NOTES]`\n\n"
                         "*Example*: `Rice 50kg Sector 15 Near Park.`"
                     )
-                    await telegram_service.send_message(chat_id=chat_id, text=instr)
+                    await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=instr)
                 else:
                     # Trigger donation flow instructions
-                    await telegram_service.send_message(
+                    await send_and_log(db=db, bg=background_tasks, 
                         chat_id=chat_id,
                         text="🎁 *Donation Portal*\n\nTo report surplus, please share your contact first so NGOs can coordinate the pickup with you.",
                         reply_markup={
@@ -147,7 +147,7 @@ async def telegram_webhook(
             if volunteer and volunteer.telegram_active:
                 # Ensure menu is synced for the volunteer
                 await telegram_service.set_bot_commands(chat_id=chat_id)
-                await telegram_service.send_message(
+                await send_and_log(db=db, bg=background_tasks, 
                     chat_id=chat_id,
                     text=f"Welcome back, *{volunteer.name}*! You are active and ready for missions. 🚀"
                 )
@@ -173,13 +173,13 @@ async def telegram_webhook(
                 poster_path = "backend/app/static/welcome.png"
                 if not os.path.exists(poster_path):
                     # Fallback to text if image missing
-                    await telegram_service.send_message(
+                    await send_and_log(db=db, bg=background_tasks, 
                         chat_id=chat_id,
                         text=welcome_caption,
                         reply_markup=inline_kb
                     )
                 else:
-                    await telegram_service.send_photo(
+                    await send_photo_and_log(db=db, bg=background_tasks, 
                         chat_id=chat_id,
                         photo_path=poster_path,
                         caption=welcome_caption,
@@ -194,7 +194,7 @@ async def telegram_webhook(
                 "• Use the buttons in mission alerts to Accept or Decline tasks.\n"
                 "• If you have surplus food to report, just type the details here!"
             )
-            await telegram_service.send_message(chat_id=chat_id, text=help_text)
+            await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=help_text)
             return {"status": "help_sent"}
 
         if text == "/leaderboard":
@@ -218,9 +218,9 @@ async def telegram_webhook(
                 for i, (vol, stats) in enumerate(results, 1):
                     medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🎖"
                     leaderboard_text += f"{medal} *{vol.name}*: `{stats.completions}` completions\n"
-                await telegram_service.send_message(chat_id=chat_id, text=leaderboard_text)
+                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=leaderboard_text)
             else:
-                await telegram_service.send_message(chat_id=chat_id, text="🏆 Leaderboard is empty. Be the first to complete a mission!")
+                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="🏆 Leaderboard is empty. Be the first to complete a mission!")
             return {"status": "leaderboard_sent"}
 
         if text == "/my_missions" or text == "/status":
@@ -241,9 +241,9 @@ async def telegram_webhook(
                     f"No-Shows: `{stats.no_shows if stats else 0}`\n\n"
                     f"Status: *Active*"
                 )
-                await telegram_service.send_message(chat_id=chat_id, text=status_report)
+                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=status_report)
             else:
-                await telegram_service.send_message(chat_id=chat_id, text="🔒 This profile is for verified volunteers only. Please link your account first.")
+                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="🔒 This profile is for verified volunteers only. Please link your account first.")
             return {"status": "status_sent"}
 
         if text == "/about":
@@ -253,7 +253,7 @@ async def telegram_webhook(
                 "🌍 *Mission*: Zero Hunger through efficient distribution.\n"
                 "🤝 *Partners*: Helping local NGOs scale their impact with secure tracking and volunteer coordination."
             )
-            await telegram_service.send_message(chat_id=chat_id, text=about_text)
+            await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=about_text)
             return {"status": "about_sent"}
 
         if text == "/tutorial":
@@ -262,7 +262,7 @@ async def telegram_webhook(
                 "1️⃣ **For Volunteers**: Register via `/start`, click 'I am a Volunteer', and share your contact. You'll receive mission alerts. Click 'Accept', get the OTP, and provide it at the pickup point.\n\n"
                 "2️⃣ **For Donors**: Click '🎁 Donate Surplus', follow the instructions to report items. Wait for notification when a volunteer is nearby, and verify them using `CONFIRM <CODE>`."
             )
-            await telegram_service.send_message(chat_id=chat_id, text=tutorial_text)
+            await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=tutorial_text)
             return {"status": "tutorial_sent"}
 
         # --- Smart OTP Detection (6 Digits) ---
@@ -299,7 +299,7 @@ async def telegram_webhook(
                         stats.completions += 1
                         
                     await db.commit()
-                    await telegram_service.send_message(
+                    await send_and_log(db=db, bg=background_tasks, 
                         chat_id=chat_id,
                         text="🎉 *Delivery Confirmed!* Thank you for your kindness. The mission is officially complete! ❤️"
                     )
@@ -307,13 +307,13 @@ async def telegram_webhook(
                     # Notify Volunteer
                     vol_stmt = select(Volunteer).where(Volunteer.id == dispatch.volunteer_id)
                     vol = (await db.execute(vol_stmt)).scalar_one()
-                    await telegram_service.send_message(
+                    await send_and_log(db=db, bg=background_tasks, 
                         chat_id=vol.telegram_chat_id,
                         text=f"✅ *Mission # {dispatch.id} Complete!*\nThe donor has verified the code. Great work! 🏆"
                     )
                     return {"status": "otp_verified"}
                 else:
-                    await telegram_service.send_message(
+                    await send_and_log(db=db, bg=background_tasks, 
                         chat_id=chat_id,
                         text="❌ *Invalid Code.* Please re-check the 6 digits from the volunteer's phone."
                     )
@@ -338,9 +338,9 @@ async def telegram_webhook(
             if dispatch:
                 dispatch.status = DispatchStatus.FAILED
                 await db.commit()
-                await telegram_service.send_message(chat_id=chat_id, text="⚠️ *Mission Cancelled*. Please avoid cancellations as they affect your Trust Tier.")
+                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="⚠️ *Mission Cancelled*. Please avoid cancellations as they affect your Trust Tier.")
             else:
-                await telegram_service.send_message(chat_id=chat_id, text="❌ No active missions found to cancel.")
+                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="❌ No active missions found to cancel.")
             return {"status": "cancel_handled"}
 
         if text == "/donate" or text == "🎁 Donate Surplus":
@@ -362,7 +362,7 @@ async def telegram_webhook(
                     "one_time_keyboard": True,
                     "resize_keyboard": True
                 }
-                await telegram_service.send_message(
+                await send_and_log(db=db, bg=background_tasks, 
                     chat_id=chat_id,
                     text="To report surplus, please share your contact first so NGOs can coordinate the pickup with you.",
                     reply_markup=donor_keyboard
@@ -395,19 +395,19 @@ async def telegram_webhook(
                         need.status = NeedStatus.COMPLETED
                         
                         await db.commit()
-                        await telegram_service.send_message(
+                        await send_and_log(db=db, bg=background_tasks, 
                             chat_id=chat_id,
                             text="✅ *Mission Complete!* Thank you for your donation. Your impact has been recorded. 🙏"
                         )
                         return {"status": "donor_verified"}
                     else:
-                        await telegram_service.send_message(
+                        await send_and_log(db=db, bg=background_tasks, 
                             chat_id=chat_id,
                             text="❌ *Invalid Code*. Please check the code provided by the volunteer."
                         )
                         return {"status": "donor_verify_failed"}
                 else:
-                    await telegram_service.send_message(
+                    await send_and_log(db=db, bg=background_tasks, 
                         chat_id=chat_id,
                         text="❌ *No active mission* found for your donation alerts."
                     )
@@ -439,10 +439,10 @@ async def telegram_webhook(
                         f"📱 *Verified*: {volunteer.phone_number}\n\n"
                         f"You are now linked to *{volunteer.organization.name}*. 🚀"
                     )
-                    await telegram_service.send_message(chat_id=chat_id, text=welcome_text)
+                    await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=welcome_text)
                     return {"status": "linked_manual"}
                 else:
-                    await telegram_service.send_message(
+                    await send_and_log(db=db, bg=background_tasks, 
                         chat_id=chat_id,
                         text="❌ *Error*: Number not found in our NGO database."
                     )
@@ -476,7 +476,7 @@ async def telegram_webhook(
                     f"You are now linked to *{volunteer.organization.name}*. "
                     f"You will receive mission alerts from them directly in this chat. 🚀"
                 )
-                await telegram_service.send_message(
+                await send_and_log(db=db, bg=background_tasks, 
                     chat_id=chat_id,
                     text=welcome_text
                 )
@@ -521,14 +521,19 @@ async def telegram_webhook(
             main_alert = pending_alerts[0]
             main_alert.message_body = text
             
-            # Cleanup duplicates/spam
+            # Cleanup duplicates/spam (excluding those referenced by needs to avoid ForeignKeyViolation)
             if len(pending_alerts) > 1:
-                from sqlalchemy import delete
                 extra_ids = [a.id for a in pending_alerts[1:]]
-                await db.execute(delete(SurplusAlert).where(SurplusAlert.id.in_(extra_ids)))
+                # Check for references in 'needs' table
+                needs_match_stmt = select(Need.surplus_alert_id).where(Need.surplus_alert_id.in_(extra_ids))
+                referenced_ids = (await db.execute(needs_match_stmt)).scalars().all()
+                
+                delete_ids = [eid for eid in extra_ids if eid not in referenced_ids]
+                if delete_ids:
+                    await db.execute(delete(SurplusAlert).where(SurplusAlert.id.in_(delete_ids)))
             
             await db.commit()
-            await telegram_service.send_message(
+            await send_and_log(db=db, bg=background_tasks, 
                 chat_id=chat_id,
                 text="🙏 *Thank you!* Your surplus report has been shared with local NGOs."
             )
@@ -549,7 +554,7 @@ async def telegram_webhook(
             db.add(alert)
             await db.commit()
             
-            await telegram_service.send_message(
+            await send_and_log(db=db, bg=background_tasks, 
                 chat_id=chat_id,
                 text="🙏 *Thank you!* Your surplus report has been shared with local NGOs."
             )
