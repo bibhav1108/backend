@@ -110,7 +110,7 @@ async def telegram_webhook(
                                     [{"text": "✅ Confirm Pickup", "callback_data": f"confirm_pickup_{dispatch.id}"}]
                                 ]
                             }
-                            await telegram_service.send_message(
+                            await send_and_log(db=db, bg=background_tasks, 
                                 chat_id=alert.chat_id, 
                                 text=donor_msg,
                                 reply_markup=inline_kb
@@ -406,7 +406,7 @@ async def telegram_webhook(
                     "`[ITEM] [QUANTITY] [LOCATION] [ANY NOTES]`\n\n"
                     "*Example*: `Rice 50kg Sector 15 Near Park. Ready for pickup till 8 PM.`"
                 )
-                await telegram_service.send_message(chat_id=chat_id, text=instr)
+                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=instr)
             else:
                 donor_keyboard = {
                     "keyboard": [[{"text": "📱 Share Contact for NGOs", "request_contact": True}]],
@@ -442,6 +442,7 @@ async def telegram_webhook(
                         dispatch.otp_used = True
                         dispatch.status = DispatchStatus.CONFIRMED
                         
+                        need_stmt = select(Need).where(Need.id == dispatch.need_id)
                         need = (await db.execute(need_stmt)).scalar_one()
                         need.status = NeedStatus.COMPLETED
                         
@@ -554,7 +555,7 @@ async def telegram_webhook(
                     "`[ITEM] [QUANTITY] [LOCATION] [ANY NOTES]`\n\n"
                     "*Example*: `Rice 50kg Sector 15 Near Park. Ready for pickup till 8 PM.`"
                 )
-                await telegram_service.send_message(chat_id=chat_id, text=instr)
+                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=instr)
                 return {"status": "donor_contact_saved"}
 
         # --- 4. Fallback: Donor Flow ---
