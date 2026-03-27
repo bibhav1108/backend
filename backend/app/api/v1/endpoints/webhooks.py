@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Request, BackgroundTasks
 import traceback
+from typing import Optional
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, delete
