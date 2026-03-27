@@ -6,6 +6,8 @@ if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from backend.app.config import settings
 
 from contextlib import asynccontextmanager
 from backend.app.database import engine, Base
@@ -51,8 +53,16 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Sahyog Setu API",
     description="Smart allocation operating system for NGO logistics",
-    version="1.5.0",
     lifespan=lifespan
+)
+
+# CORS Middleware configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Include Routers
