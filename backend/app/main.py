@@ -19,6 +19,7 @@ from backend.app.services.telegram_service import telegram_service
 from backend.app.api.v1.endpoints.auth import router as auth_router
 from backend.app.api.v1.endpoints.inventory import router as inventory_router
 from backend.app.api.v1.endpoints.organizations import router as organizations_router
+from backend.app.api.v1.endpoints.users import router as users_router
 from backend.app.api.v1.endpoints.meta import router as meta_router
 
 @asynccontextmanager
@@ -68,6 +69,7 @@ app.add_middleware(
 # Include Routers
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(organizations_router, prefix="/api/v1/organizations", tags=["organizations"])
+app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
 app.include_router(meta_router, prefix="/api/v1", tags=["metadata"])
 app.include_router(webhooks_router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(volunteers_router, prefix="/api/v1/volunteers", tags=["volunteers"])

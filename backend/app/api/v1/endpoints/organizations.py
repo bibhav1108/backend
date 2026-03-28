@@ -4,8 +4,10 @@ from sqlalchemy import select
 from backend.app.database import get_db
 from backend.app.models import Organization, User
 from backend.app.services.auth_utils import get_password_hash
+from backend.app.api.deps import get_current_user
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
+from datetime import datetime
 
 router = APIRouter()
 
@@ -27,6 +29,17 @@ class NGORegistrationResponse(BaseModel):
     org_name: str
     admin_email: str
     message: str
+
+class OrganizationRead(BaseModel):
+    id: int
+    name: str
+    contact_phone: str
+    contact_email: str
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 # --- Endpoints ---
 
@@ -94,3 +107,22 @@ async def register_ngo(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An error occurred during registration: {str(e)}"
         )
+
+@router.get("/me", response_model=OrganizationRead)
+async def get_my_organization(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Retrieve the detailed profile of the organization the user belongs to.
+    """
+    stmt = select(Organization).where(Organization.id == current_user.org_id)
+    result = await db.execute(stmt)
+    org = result.scalar_one_or_none()
+    
+    if not org:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found"
+        )
+    return org
