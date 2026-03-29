@@ -134,9 +134,9 @@ async def claim_marketplace_need(
             org_name = org.name if org else "A local NGO"
             
             msg = (
-                f"📢 *Update on your Donation!*\n\n"
+                f"📢 *Update on your Contribution!*\n\n"
                 f"NGO *{org_name}* has claimed your surplus report! 🤝\n"
-                f"They are now assigning a volunteer for the pickup."
+                f"They are now assigning a dedicated volunteer to reach you for the pickup. Thank you for your generosity!"
             )
             await telegram_service.send_message(chat_id=alert.chat_id, text=msg)
 
@@ -202,9 +202,9 @@ async def convert_alert_to_marketplace_need(
     org_name = org.name if org else "A local NGO"
 
     msg = (
-        f"📢 *Great News!*\n\n"
-        f"NGO *{org_name}* has officially accepted your donation report! ✨🤝\n"
-        f"A volunteer will be assigned very soon for the pickup."
+        f"📢 *Good News HERO!*\n\n"
+        f"NGO *{org_name}* has officially accepted your mission report! ✨🤝\n"
+        f"Your contribution is vital. A volunteer will be assigned very soon to collect the items."
     )
     await telegram_service.send_message(chat_id=alert.chat_id, text=msg)
     

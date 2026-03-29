@@ -98,12 +98,12 @@ async def create_marketplace_dispatch(
 
     # 4. Fire Telegram Notification
     body = (
-        f"🚨 *Marketplace Mission ALERT*\n\n"
-        f"You have been assigned to collect a donor surplus:\n"
-        f"*Type*: {need.type.name}\n"
-        f"*Qty*: {need.quantity}\n"
-        f"*Pickup*: {need.pickup_address}\n\n"
-        "Please go to the location and collect the items."
+        f"🚨 *New Donation Pickup ALERT*\n\n"
+        f"Hero, you have been assigned to collect a donor's contribution:\n"
+        f"📦 *Type*: {need.type.name}\n"
+        f"🔢 *Qty*: {need.quantity}\n"
+        f"📍 *Pickup*: {need.pickup_address}\n\n"
+        "Please head to the location to save this resource! Thank you for your service. 🤝"
     )
     
     keyboard = {

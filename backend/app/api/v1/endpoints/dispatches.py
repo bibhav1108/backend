@@ -86,12 +86,12 @@ async def create_dispatch(
 
     # 4. Fire Telegram Notification
     body = (
-        f"*Sahyog Setu - New Mission ALERT*\n\n"
-        f"You have been dispatched to match a target need:\n"
-        f"*Type*: {need.type.name}\n"
-        f"*Qty*: {need.quantity}\n"
-        f"*Pickup*: {need.pickup_address}\n\n"
-        "Click the button below to accept:"
+        f"🚨 *Urgent Mission ALERT*\n\n"
+        f"Hero, you have been matched with a priority community need:\n"
+        f"📦 *Type*: {need.type.name}\n"
+        f"🔢 *Qty*: {need.quantity}\n"
+        f"📍 *Pickup*: {need.pickup_address}\n\n"
+        "Our team is counting on you! Click below to confirm you are on your way: 🚩"
     )
     
     keyboard = {

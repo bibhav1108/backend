@@ -78,7 +78,7 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int, bg: 
                     f"🔢 *Quantity*: {parsed.get('quantity', 'N/A')}\n"
                     f"📍 *Location*: {parsed.get('location', 'N/A')}\n"
                     f"📝 *Notes*: {parsed.get('notes', 'None')}\n\n"
-                    f"Is this correct? NGOs will use this to coordinate."
+                    f"✨ *Does this look correct?* Confirming will help local NGOs reach you faster."
                 )
                 inline_kb = {
                     "inline_keyboard": [
@@ -90,7 +90,7 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int, bg: 
                 }
                 await send_and_log(bg=bg, chat_id=chat_id, text=summary, reply_markup=inline_kb)
             else:
-                await send_and_log(bg=bg, chat_id=chat_id, text="🙏 *Thank you!* Your report has been received and shared with local NGOs.")
+                await send_and_log(bg=bg, chat_id=chat_id, text="🙏 *Thank you!* Your report has been shared. Our team will review and connect with you shortly.")
     except Exception as e:
         print(f"[ERROR] Background AI Processing Failed: {e}")
 
@@ -131,7 +131,7 @@ async def telegram_webhook(
                     await db.commit()
                     
                     await send_and_log(bg=background_tasks, chat_id=chat_id,
-                        text=f"🎫 *Marketplace Mission Confirmed!*\n\nYour Pickup CODE is: `{raw_code}`\nProvide this to the donor once items are collected."
+                        text=f"🎫 *Mission Accepted!*\n\nYour Pickup CODE is: `{raw_code}`\n\nShow this code to the donor upon collection. Thank you for your service! 🤝"
                     )
 
             # Campaign Flow: Join Pool
@@ -142,7 +142,7 @@ async def telegram_webhook(
                 if not existing:
                     db.add(MissionTeam(campaign_id=campaign_id, volunteer_id=volunteer.id, status=CampaignParticipationStatus.PENDING))
                     await db.commit()
-                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *Request Sent!* Waiting for NGO selection.")
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *Request Received!* The NGO team is reviewing your profile. Stay tuned! 🕒")
 
             # AI Confirmation Callbacks
             if data_payload.startswith("ai_confirm_"):
@@ -153,7 +153,7 @@ async def telegram_webhook(
                     alert.is_confirmed = True
                     alert.is_processed = False
                     await db.commit()
-                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *Report Confirmed!* Your donation is now live for NGOs. ✨🤝")
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *Report Verified!* Your donation is now live and waiting for a hero. ✨🤝")
             
             return {"status": "callback_handled"}
 
@@ -165,7 +165,7 @@ async def telegram_webhook(
         text = message.get("text", "").strip()
         
         if text == "/start":
-            welcome_text = "🤝 *WELCOME TO SAHYOG SETU V2.0*\n\nYour smart allocation companion for humanitarian logistics."
+            welcome_text = "🤝 *Welcome to Sahyog Setu V2.0*\n\nYour smart companion for humanitarian impact. How can we help you save lives today? 🌍"
             inline_kb = {"inline_keyboard": [[{"text": "🙋 Join as Volunteer", "callback_data": "join_volunteer"}, {"text": "🎁 Donate Surplus", "callback_data": "donate_surplus"}]]}
             await send_photo_and_log(bg=background_tasks, chat_id=chat_id, photo_url=WELCOME_PHOTO_URL, caption=welcome_text, reply_markup=inline_kb)
             return {"status": "start_sent"}
@@ -180,7 +180,7 @@ async def telegram_webhook(
                 pending.message_body = text
                 await db.commit()
                 # --- Non-Blocking AI Orchestration ---
-                await send_and_log(bg=background_tasks, chat_id=chat_id, text="Analyzing your report... 🤖 (Hold on a sec!)")
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="🤖 *Thinking...* Analyzing your report details now!")
                 background_tasks.add_task(process_ai_surplus_report, chat_id, text, pending.id, background_tasks)
                 return {"status": "ai_task_queued"}
 

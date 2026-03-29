@@ -126,13 +126,13 @@ async def broadcast_mission_invitation(
     volunteers = (await db.execute(vol_stmt)).scalars().all()
     
     msg = (
-        f"📢 *Sahyog Setu - New Mission TEAM Recruitment*\n\n"
-        f"📝 *Campaign*: {campaign.name}\n"
-        f"🎯 *Mission*: {campaign.type.name}\n"
-        f"📖 *Detail*: {campaign.description or 'No additional details provided.'}\n"
-        f"📅 *Schedule*: {campaign.start_time.strftime('%Y-%m-%d %H:%M') if campaign.start_time else 'TBD'}\n"
-        f"📍 *Location*: {campaign.location_address or 'Check with Admin'}\n\n"
-        f"Click below to join the mission pool! (Approval Required)"
+        f"📢 *New Community Mission Team Recruitment*\n\n"
+        f"We are organizing an impactful action: *{campaign.name}*! 💪\n\n"
+        f"🎯 *Focus*: {campaign.type.name}\n"
+        f"📖 *Goal*: {campaign.description or 'Making a positive difference in the community.'}\n"
+        f"📅 *Kick-off*: {campaign.start_time.strftime('%Y-%m-%d %H:%M') if campaign.start_time else 'TBD'}\n"
+        f"📍 *Rendezvous*: {campaign.location_address or 'Check with NGO Admin'}\n\n"
+        f"This is a proactive mission! Click below to join the candidate pool and be part of the change. ✨🌍"
     )
     
     keyboard = {
@@ -184,7 +184,7 @@ async def approve_mission_volunteer(
     # 3. Notify Volunteer
     stmt_vol = select(Volunteer).where(Volunteer.id == volunteer_id)
     vol = (await db.execute(stmt_vol)).scalar_one()
-    msg = f"✨ *Great News!*\n\nYou have been *APPROVED* for the mission: *{campaign.name}*! 🚩🤝 See you at the location."
+    msg = f"✨ *Great News HERO!*\n\nYou have been *SELECTED* for the mission: *{campaign.name}*! 🚩🤝 See you at the kick-off. Your dedication is inspiring!"
     await telegram_service.send_message(chat_id=vol.telegram_chat_id, text=msg)
 
     return {"message": "Volunteer successfully approved for mission team."}
