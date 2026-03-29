@@ -62,17 +62,21 @@ async def send_photo_and_log(bg: BackgroundTasks, chat_id: str, photo_url: str, 
         bg.add_task(log_telegram_message, chat_id, msg_id)
     return msg_id
 
-async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int, bg: BackgroundTasks):
+async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int):
     """
     Background Task: Heavy-lifting AI parsing and summary card construction.
     This prevents Telegram webhook timeouts.
     """
+    print(f"[TRACE] Starting AI Processing for Chat: {chat_id} | Alert: {alert_id}")
     try:
         async with async_session() as db:
+            print(f"[TRACE] Invoking Gemini Parser for: {text[:20]}...")
             parsed = await ai_service.parse_surplus_text(text)
+            print(f"[TRACE] Gemini Response Received: {parsed is not None}")
             
             # --- Filtering Logic: Ignore empty/garbage reports ---
             if not parsed or not parsed.get("item") or parsed.get("item") in ["N/A", "Donation Item"]:
+                print(f"[TRACE] Discarding garbage report.")
                 # Delete the alert from DB to keep the dashboard clean
                 stmt_del = delete(MarketplaceAlert).where(MarketplaceAlert.id == alert_id)
                 await db.execute(stmt_del)
@@ -81,11 +85,11 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int, bg: 
                 # Feedback to user
                 missing_msg = (
                     "🙏 *We missed some details!*\n\n"
-                    "Please send us the details in this format:\n"
+                    "Please send us the details like this:\n"
                     "`[Item Name] [Quantity] [Location]`\n\n"
                     "Example: `10kg Dal and Rice at Sector 62, Noida` ✨"
                 )
-                await send_and_log(bg=bg, chat_id=chat_id, text=missing_msg)
+                await telegram_service.send_message(chat_id, missing_msg)
                 return
 
             if parsed:
@@ -108,11 +112,13 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int, bg: 
                         ]
                     ]
                 }
-                await send_and_log(bg=bg, chat_id=chat_id, text=summary, reply_markup=inline_kb)
+                print(f"[TRACE] Sending AI Summary Card to Telegram.")
+                await telegram_service.send_message(chat_id, summary, reply_markup=inline_kb)
             else:
-                await send_and_log(bg=bg, chat_id=chat_id, text="🙏 *Thank you!* Your report has been shared. Our team will review and connect with you shortly.")
+                await telegram_service.send_message(chat_id, "🙏 *Thank you!* Your report has been shared. Our team will review and connect with you shortly.")
     except Exception as e:
         print(f"[ERROR] Background AI Processing Failed: {e}")
+        traceback.print_exc()
 
 # --- Webhook Endpoint ---
 
@@ -287,7 +293,7 @@ async def telegram_webhook(
                 await db.commit()
                 # --- Non-Blocking AI Orchestration ---
                 await send_and_log(bg=background_tasks, chat_id=chat_id, text="🤖 *Thinking...* Analyzing your report details now!")
-                background_tasks.add_task(process_ai_surplus_report, chat_id, text, pending.id, background_tasks)
+                background_tasks.add_task(process_ai_surplus_report, chat_id, text, pending.id)
                 return {"status": "ai_task_queued"}
 
     except Exception as e:
