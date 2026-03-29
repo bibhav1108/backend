@@ -174,6 +174,7 @@ class MarketplaceDispatch(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     marketplace_need: Mapped["MarketplaceNeed"] = relationship(back_populates="dispatches")
+    volunteer: Mapped["Volunteer"] = relationship()
 
 class NGO_Campaign(Base):
     __tablename__ = "ngo_campaigns"

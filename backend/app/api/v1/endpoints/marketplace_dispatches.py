@@ -37,6 +37,12 @@ class MarketplaceDispatchResponse(BaseModel):
     created_at: datetime
     otp_used: bool
 
+    # --- Enhanced Fields ---
+    volunteer_name: Optional[str] = None
+    item_type: Optional[str] = None
+    item_quantity: Optional[str] = None
+    pickup_address: Optional[str] = None
+
     class Config:
         from_attributes = True
 
@@ -171,3 +177,40 @@ async def verify_marketplace_otp(
     await db.commit()
 
     return {"status": "success", "message": "OTP verified. Recovery logged in MarketplaceInventory."}
+
+@router.get("/", response_model=List[MarketplaceDispatchResponse])
+async def list_marketplace_dispatch_history(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    List all historical marketplace dispatches for the current NGO.
+    Includes descriptive names and types for easy coordinate viewing.
+    """
+    from sqlalchemy.orm import joinedload
+    
+    stmt = (
+        select(MarketplaceDispatch)
+        .options(
+            joinedload(MarketplaceDispatch.volunteer),
+            joinedload(MarketplaceDispatch.marketplace_need)
+        )
+        .join(MarketplaceNeed, MarketplaceDispatch.marketplace_need_id == MarketplaceNeed.id)
+        .where(MarketplaceNeed.org_id == current_user.org_id)
+        .order_by(MarketplaceDispatch.created_at.desc())
+    )
+    
+    result = await db.execute(stmt)
+    dispatches = result.scalars().all()
+    
+    # Map to Response model manually to flatten the joined data
+    response_list = []
+    for d in dispatches:
+        resp = MarketplaceDispatchResponse.model_validate(d)
+        resp.volunteer_name = d.volunteer.name if d.volunteer else "Unknown"
+        resp.item_type = d.marketplace_need.type.name if d.marketplace_need else "Unknown"
+        resp.item_quantity = d.marketplace_need.quantity if d.marketplace_need else "N/A"
+        resp.pickup_address = d.marketplace_need.pickup_address if d.marketplace_need else "N/A"
+        response_list.append(resp)
+        
+    return response_list

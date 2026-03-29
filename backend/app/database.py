@@ -79,21 +79,47 @@ async def run_migrations():
                     except Exception as e:
                         print(f"     (Already exists or skipped: {e})")
 
-    # 2. Table Renaming and Schema Updates
+    # 2. Table Renaming and Schema Updates (Idempotent)
     async with engine.begin() as conn:
         print("[Migrations] Applying Table Renames & New Structures...")
 
-        # Rename existing V1.0 tables to V2.0 Marketplace naming
-        await conn.execute(text("ALTER TABLE IF EXISTS surplus_alerts RENAME TO marketplace_alerts;"))
-        await conn.execute(text("ALTER TABLE IF EXISTS needs RENAME TO marketplace_needs;"))
-        await conn.execute(text("ALTER TABLE IF EXISTS dispatches RENAME TO marketplace_dispatches;"))
-        await conn.execute(text("ALTER TABLE IF EXISTS campaigns RENAME TO ngo_campaigns;"))
-        await conn.execute(text("ALTER TABLE IF EXISTS campaign_participation RENAME TO mission_teams;"))
+        # Safe Table Renames
+        table_renames = [
+            ("surplus_alerts", "marketplace_alerts"),
+            ("needs", "marketplace_needs"),
+            ("dispatches", "marketplace_dispatches"),
+            ("campaigns", "ngo_campaigns"),
+            ("campaign_participation", "mission_teams")
+        ]
+        
+        for old_t, new_t in table_renames:
+            await conn.execute(text(f"""
+                DO $$ 
+                BEGIN 
+                    IF EXISTS (SELECT FROM pg_tables WHERE tablename = '{old_t}') AND 
+                       NOT EXISTS (SELECT FROM pg_tables WHERE tablename = '{new_t}') THEN 
+                        ALTER TABLE {old_t} RENAME TO {new_t}; 
+                    END IF; 
+                END $$;
+            """))
 
-        # Marketplace Cleanup
-        await conn.execute(text("ALTER TABLE IF EXISTS marketplace_needs RENAME COLUMN surplus_alert_id TO marketplace_alert_id;"))
-        await conn.execute(text("ALTER TABLE IF EXISTS marketplace_dispatches RENAME COLUMN need_id TO marketplace_need_id;"))
-        await conn.execute(text("ALTER TABLE IF EXISTS galleries RENAME COLUMN dispatch_id TO marketplace_dispatch_id;"))
+        # Safe Column Renames
+        column_renames = [
+            ("marketplace_needs", "surplus_alert_id", "marketplace_alert_id"),
+            ("marketplace_dispatches", "need_id", "marketplace_need_id"),
+            ("galleries", "dispatch_id", "marketplace_dispatch_id")
+        ]
+
+        for table, old_c, new_c in column_renames:
+            await conn.execute(text(f"""
+                DO $$ 
+                BEGIN 
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='{table}' AND column_name='{old_c}') AND
+                       NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='{table}' AND column_name='{new_c}') THEN
+                        ALTER TABLE {table} RENAME COLUMN {old_c} TO {new_c};
+                    END IF;
+                END $$;
+            """))
 
         # Marketplace Alert Extensions
         await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS is_confirmed BOOLEAN DEFAULT FALSE;"))
