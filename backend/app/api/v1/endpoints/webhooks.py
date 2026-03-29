@@ -70,6 +70,24 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int, bg: 
     try:
         async with async_session() as db:
             parsed = await ai_service.parse_surplus_text(text)
+            
+            # --- Filtering Logic: Ignore empty/garbage reports ---
+            if not parsed or not parsed.get("item") or parsed.get("item") in ["N/A", "Donation Item"]:
+                # Delete the alert from DB to keep the dashboard clean
+                stmt_del = delete(MarketplaceAlert).where(MarketplaceAlert.id == alert_id)
+                await db.execute(stmt_del)
+                await db.commit()
+                
+                # Feedback to user
+                missing_msg = (
+                    "🙏 *We missed some details!*\n\n"
+                    "Please send us the details in this format:\n"
+                    "`[Item Name] [Quantity] [Location]`\n\n"
+                    "Example: `10kg Dal and Rice at Sector 62, Noida` ✨"
+                )
+                await send_and_log(bg=bg, chat_id=chat_id, text=missing_msg)
+                return
+
             if parsed:
                 # Check for Fallback notice
                 notice = "⚠️ *Plan B: Basic Sync Used (AI Busy)*\n\n" if parsed.get("fallback_used") else "🤖 *AI Summary - Please Confirm*\n\n"
