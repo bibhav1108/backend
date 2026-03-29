@@ -124,7 +124,14 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int):
                     ]
                 }
                 print(f"[TRACE] Sending AI Summary Card to Telegram.")
-                await telegram_service.send_message(chat_id, summary, reply_markup=inline_kb)
+                res_id = await telegram_service.send_message(chat_id, summary, reply_markup=inline_kb)
+                print(f"[TRACE] Final Summary Card Dispatch Result: {res_id is not None}")
+                
+                if res_id is None:
+                    # Retry with plain text (No Markdown) if it failed (likely a parsing error)
+                    print(f"[TRACE] Retrying with plain text fallback...")
+                    plain_summary = summary.replace("*", "").replace("_", "")
+                    await telegram_service.send_message(chat_id, plain_summary, reply_markup=inline_kb, parse_mode=None)
             else:
                 await telegram_service.send_message(chat_id, "🙏 *Thank you!* Your report has been shared. Our team will review and connect with you shortly.")
     except Exception as e:
