@@ -30,19 +30,24 @@ router = APIRouter()
 
 # --- Helper Functions ---
 
-async def log_telegram_message(db: AsyncSession, chat_id: str, message_id: int):
-    """Save message ID to DB for 24h cleanup."""
+async def log_telegram_message(chat_id: str, message_id: int):
+    """
+    Save message ID to DB for 24h cleanup.
+    Self-contained session for background execution safety.
+    """
     try:
-        msg = TelegramMessage(chat_id=chat_id, message_id=message_id)
-        db.add(msg)
-        await db.commit()
+        async with async_session() as db:
+            msg = TelegramMessage(chat_id=chat_id, message_id=message_id)
+            db.add(msg)
+            await db.commit()
     except Exception as e:
         print(f"[ERROR] Failed to log telegram message: {e}")
 
-async def send_and_log(db: AsyncSession, bg: BackgroundTasks, chat_id: str, text: str, **kwargs) -> Optional[int]:
+async def send_and_log(bg: BackgroundTasks, chat_id: str, text: str, **kwargs) -> Optional[int]:
+    """Sends a Telegram message and queues its ID for cleanup in the background."""
     msg_id = await telegram_service.send_message(chat_id, text, **kwargs)
     if msg_id:
-        bg.add_task(log_telegram_message, db, chat_id, msg_id)
+        bg.add_task(log_telegram_message, chat_id, msg_id)
     return msg_id
 
 async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int, bg: BackgroundTasks):
@@ -73,9 +78,9 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int, bg: 
                         ]
                     ]
                 }
-                await send_and_log(db=db, bg=bg, chat_id=chat_id, text=summary, reply_markup=inline_kb)
+                await send_and_log(bg=bg, chat_id=chat_id, text=summary, reply_markup=inline_kb)
             else:
-                await send_and_log(db=db, bg=bg, chat_id=chat_id, text="🙏 *Thank you!* Your report has been received and shared with local NGOs.")
+                await send_and_log(bg=bg, chat_id=chat_id, text="🙏 *Thank you!* Your report has been received and shared with local NGOs.")
     except Exception as e:
         print(f"[ERROR] Background AI Processing Failed: {e}")
 
@@ -115,7 +120,7 @@ async def telegram_webhook(
                     dispatch.otp_expires_at = expires_at
                     await db.commit()
                     
-                    await send_and_log(db=db, bg=background_tasks, chat_id=chat_id,
+                    await send_and_log(bg=background_tasks, chat_id=chat_id,
                         text=f"🎫 *Marketplace Mission Confirmed!*\n\nYour Pickup CODE is: `{raw_code}`\nProvide this to the donor once items are collected."
                     )
 
@@ -127,7 +132,7 @@ async def telegram_webhook(
                 if not existing:
                     db.add(MissionTeam(campaign_id=campaign_id, volunteer_id=volunteer.id, status=CampaignParticipationStatus.PENDING))
                     await db.commit()
-                    await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="✅ *Request Sent!* Waiting for NGO selection.")
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *Request Sent!* Waiting for NGO selection.")
 
             # AI Confirmation Callbacks
             if data_payload.startswith("ai_confirm_"):
@@ -138,7 +143,7 @@ async def telegram_webhook(
                     alert.is_confirmed = True
                     alert.is_processed = False
                     await db.commit()
-                    await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="✅ *Report Confirmed!* Your donation is now live for NGOs. ✨🤝")
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *Report Confirmed!* Your donation is now live for NGOs. ✨🤝")
             
             return {"status": "callback_handled"}
 
@@ -152,7 +157,7 @@ async def telegram_webhook(
         if text == "/start":
             welcome_text = "🤝 *WELCOME TO SAHYOG SETU V2.0*"
             inline_kb = {"inline_keyboard": [[{"text": "🙋 Join as Volunteer", "callback_data": "join_volunteer"}, {"text": "🎁 Donate Surplus", "callback_data": "donate_surplus"}]]}
-            await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=welcome_text, reply_markup=inline_kb)
+            await send_and_log(bg=background_tasks, chat_id=chat_id, text=welcome_text, reply_markup=inline_kb)
             return {"status": "start_sent"}
 
         # Surplus Reporting (The AI Ingestion Flow)
@@ -165,7 +170,7 @@ async def telegram_webhook(
                 pending.message_body = text
                 await db.commit()
                 # --- Non-Blocking AI Orchestration ---
-                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="Analyzing your report... 🤖 (Hold on a sec!)")
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="Analyzing your report... 🤖 (Hold on a sec!)")
                 background_tasks.add_task(process_ai_surplus_report, chat_id, text, pending.id, background_tasks)
                 return {"status": "ai_task_queued"}
 

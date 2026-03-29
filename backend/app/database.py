@@ -15,8 +15,15 @@ else:
         f"@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
     )
 
-# Create Async Engine
-engine = create_async_engine(DATABASE_URL, echo=True)
+# Create Async Engine with production-ready connection pooling
+engine = create_async_engine(
+    DATABASE_URL, 
+    echo=True,
+    pool_pre_ping=True,  # Health check before using a connection
+    pool_recycle=300,    # Retire connections older than 5 mins (Great for Neon/Serverless)
+    pool_size=5,         # Base connection pool size
+    max_overflow=10      # Allow up to 15 concurrent connections
+)
 
 # Create Sessionmaker
 async_session = async_sessionmaker(
