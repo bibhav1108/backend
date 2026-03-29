@@ -145,8 +145,39 @@ async def telegram_webhook(
                     db.add(MissionTeam(campaign_id=campaign_id, volunteer_id=volunteer.id, status=CampaignParticipationStatus.PENDING))
                     await db.commit()
                     await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *Request Received!* The NGO team is reviewing your profile. Stay tuned! 🕒")
+            
+            # --- Added Flows: Join & Donate ---
+            if data_payload == "donate_surplus":
+                # Create a placeholder alert to capture the next message
+                alert = MarketplaceAlert(chat_id=chat_id, message_body="[Pending Report]")
+                db.add(alert)
+                await db.commit()
+                
+                format_msg = (
+                    "🎁 *Describe your surplus!*\n\n"
+                    "Please send us the details in this format:\n"
+                    "`[Item Name] [Quantity] [Location]`\n\n"
+                    "Example: `10kg Dal and Rice at Sector 62, Noida`\n\n"
+                    "Our AI will automatically parse these details! ✨"
+                )
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text=format_msg)
 
-            # AI Confirmation Callbacks
+            if data_payload == "join_volunteer":
+                stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
+                existing = (await db.execute(stmt)).scalar_one_or_none()
+                
+                if existing:
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *You are already a registered volunteer!* Use /menu to see active missions.")
+                else:
+                    onboard_msg = "🦁 *Onboarding Started!*\n\nTo join our mission, we need to verify your contact. Please share your phone number using the button below."
+                    reply_kb = {
+                        "keyboard": [[{"text": "📱 Share Contact", "request_contact": True}]],
+                        "resize_keyboard": True,
+                        "one_time_keyboard": True
+                    }
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text=onboard_msg, reply_markup=reply_kb)
+
+            # --- AI Confirmation & Edit Handlers ---
             if data_payload.startswith("ai_confirm_"):
                 alert_id = int(data_payload.split("_")[2])
                 stmt = select(MarketplaceAlert).where(MarketplaceAlert.id == alert_id)
@@ -156,6 +187,16 @@ async def telegram_webhook(
                     alert.is_processed = False
                     await db.commit()
                     await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *Report Verified!* Your donation is now live and waiting for a hero. ✨🤝")
+
+            if data_payload.startswith("ai_edit_"):
+                alert_id = int(data_payload.split("_")[2])
+                stmt = select(MarketplaceAlert).where(MarketplaceAlert.id == alert_id)
+                alert = (await db.execute(stmt)).scalar_one_or_none()
+                if alert:
+                    # Allow user to re-enter description by resetting status
+                    alert.message_body = "[Pending Report]"
+                    await db.commit()
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="🔄 *No problem!* Just send me the corrected details (Item, Qty, Location) and I'll re-analyze them.")
             
             return {"status": "callback_handled"}
 
@@ -165,7 +206,39 @@ async def telegram_webhook(
         message = data["message"]
         chat_id = str(message["chat"]["id"])
         text = message.get("text", "").strip()
-        
+        contact = message.get("contact")
+
+        # --- Handle Shared Contact (Registration) ---
+        if contact:
+            phone = contact.get("phone_number")
+            name = f"{contact.get('first_name', '')} {contact.get('last_name', '')}".strip() or "Volunteer"
+            
+            # Use first organization as default for now
+            stmt_org = select(Organization).limit(1)
+            org = (await db.execute(stmt_org)).scalar_one_or_none()
+            org_id = org.id if org else 1
+
+            # Check if user exists by phone
+            stmt_check = select(Volunteer).where(Volunteer.phone_number == phone)
+            v = (await db.execute(stmt_check)).scalar_one_or_none()
+            
+            if v:
+                v.telegram_chat_id = chat_id
+                v.telegram_active = True
+            else:
+                v = Volunteer(
+                    org_id=org_id,
+                    name=name,
+                    phone_number=phone,
+                    telegram_chat_id=chat_id,
+                    telegram_active=True
+                )
+                db.add(v)
+            
+            await db.commit()
+            await send_and_log(bg=background_tasks, chat_id=chat_id, text=f"🎉 *Welcome {name}!* Your registration is complete. You will now receive mission alerts for your area! 🚀")
+            return {"status": "registered"}
+
         if text == "/start":
             welcome_text = "🤝 *WELCOME TO SAHYOG SETU V2.0*\n\nYour smart companion for humanitarian impact. How can we help you save lives today? 🌍"
             inline_kb = {"inline_keyboard": [[{"text": "🙋 Join as Volunteer", "callback_data": "join_volunteer"}, {"text": "🎁 Donate Surplus", "callback_data": "donate_surplus"}]]}
@@ -183,8 +256,13 @@ async def telegram_webhook(
 
         # Surplus Reporting (The AI Ingestion Flow)
         if text and not text.startswith("/"):
-            # Check for role/context first
-            stmt = select(MarketplaceAlert).where(MarketplaceAlert.chat_id == chat_id, MarketplaceAlert.message_body == "[Pending Report]")
+            # Check for role/context first - limit(1) to prevent MultipleResultsFound error
+            stmt = (
+                select(MarketplaceAlert)
+                .where(MarketplaceAlert.chat_id == chat_id, MarketplaceAlert.message_body == "[Pending Report]")
+                .order_by(desc(MarketplaceAlert.created_at))
+                .limit(1)
+            )
             pending = (await db.execute(stmt)).scalar_one_or_none()
             
             if pending:
