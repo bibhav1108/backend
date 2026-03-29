@@ -28,9 +28,6 @@ from backend.app.services.media_service import media_service
 
 router = APIRouter()
 
-# --- Shared Assets ---
-WELCOME_PHOTO_URL = "https://res.cloudinary.com/ddu9fvg8o/image/upload/v1740391443/Sahyog_Setu_Welcome_v2_fghj.png"
-
 # --- Helper Functions ---
 
 async def log_telegram_message(chat_id: str, message_id: int):
@@ -165,9 +162,9 @@ async def telegram_webhook(
         text = message.get("text", "").strip()
         
         if text == "/start":
-            welcome_text = "🤝 *Welcome to Sahyog Setu V2.0*\n\nYour smart companion for humanitarian impact. How can we help you save lives today? 🌍"
+            welcome_text = "🤝 *WELCOME TO SAHYOG SETU V2.0*\n\nYour smart companion for humanitarian impact. How can we help you save lives today? 🌍"
             inline_kb = {"inline_keyboard": [[{"text": "🙋 Join as Volunteer", "callback_data": "join_volunteer"}, {"text": "🎁 Donate Surplus", "callback_data": "donate_surplus"}]]}
-            await send_photo_and_log(bg=background_tasks, chat_id=chat_id, photo_url=WELCOME_PHOTO_URL, caption=welcome_text, reply_markup=inline_kb)
+            await send_and_log(bg=background_tasks, chat_id=chat_id, text=welcome_text, reply_markup=inline_kb)
             return {"status": "start_sent"}
 
         # Surplus Reporting (The AI Ingestion Flow)
