@@ -303,8 +303,10 @@ async def telegram_webhook(
                 pending.message_body = text
                 await db.commit()
                 # --- Non-Blocking AI Orchestration ---
+                print(f"[TRACE] Handing over to Background Task for Chat: {chat_id}")
                 await send_and_log(bg=background_tasks, chat_id=chat_id, text="🤖 *Thinking...* Analyzing your report details now!")
                 background_tasks.add_task(process_ai_surplus_report, chat_id, text, pending.id)
+                print(f"[TRACE] Background task queued successfully for Alert: {pending.id}")
                 return {"status": "ai_task_queued"}
 
     except Exception as e:
