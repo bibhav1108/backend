@@ -28,6 +28,9 @@ from backend.app.services.media_service import media_service
 
 router = APIRouter()
 
+# --- Shared Assets ---
+WELCOME_PHOTO_URL = "https://res.cloudinary.com/ddu9fvg8o/image/upload/v1740391443/Sahyog_Setu_Welcome_v2_fghj.png"
+
 # --- Helper Functions ---
 
 async def log_telegram_message(chat_id: str, message_id: int):
@@ -46,6 +49,13 @@ async def log_telegram_message(chat_id: str, message_id: int):
 async def send_and_log(bg: BackgroundTasks, chat_id: str, text: str, **kwargs) -> Optional[int]:
     """Sends a Telegram message and queues its ID for cleanup in the background."""
     msg_id = await telegram_service.send_message(chat_id, text, **kwargs)
+    if msg_id:
+        bg.add_task(log_telegram_message, chat_id, msg_id)
+    return msg_id
+
+async def send_photo_and_log(bg: BackgroundTasks, chat_id: str, photo_url: str, caption: str, **kwargs) -> Optional[int]:
+    """Sends a Telegram photo and queues its ID for cleanup in the background."""
+    msg_id = await telegram_service.send_photo(chat_id, photo_url, caption, **kwargs)
     if msg_id:
         bg.add_task(log_telegram_message, chat_id, msg_id)
     return msg_id
@@ -155,9 +165,9 @@ async def telegram_webhook(
         text = message.get("text", "").strip()
         
         if text == "/start":
-            welcome_text = "🤝 *WELCOME TO SAHYOG SETU V2.0*"
+            welcome_text = "🤝 *WELCOME TO SAHYOG SETU V2.0*\n\nYour smart allocation companion for humanitarian logistics."
             inline_kb = {"inline_keyboard": [[{"text": "🙋 Join as Volunteer", "callback_data": "join_volunteer"}, {"text": "🎁 Donate Surplus", "callback_data": "donate_surplus"}]]}
-            await send_and_log(bg=background_tasks, chat_id=chat_id, text=welcome_text, reply_markup=inline_kb)
+            await send_photo_and_log(bg=background_tasks, chat_id=chat_id, photo_url=WELCOME_PHOTO_URL, caption=welcome_text, reply_markup=inline_kb)
             return {"status": "start_sent"}
 
         # Surplus Reporting (The AI Ingestion Flow)
