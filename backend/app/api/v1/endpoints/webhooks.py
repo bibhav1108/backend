@@ -76,9 +76,21 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int):
             
             # --- Normalize AI Output (Handle Lists from Gemini) ---
             if isinstance(parsed, list) and len(parsed) > 0:
-                print(f"[TRACE] Multiple items detected. Normalizing list to first entry.")
-                # If it's a list, take the first item for the summary card
-                parsed = parsed[0]
+                print(f"[TRACE] Multiple items detected. Consolidating list.")
+                # Combine multiple items into a single summary for display
+                all_items = []
+                all_qties = []
+                for p in parsed:
+                    if isinstance(p, dict):
+                        # Use get() for safety
+                        all_items.append(str(p.get("item", "N/A")))
+                        all_qties.append(str(p.get("quantity", "N/A")))
+                
+                # Take the first item as base (for location/notes) and override item/qty fields
+                consolidated = parsed[0].copy() if isinstance(parsed[0], dict) else {}
+                consolidated["item"] = ", ".join(all_items)
+                consolidated["quantity"] = ", ".join(all_qties)
+                parsed = consolidated
             
             # Safety check to prevent AttributeError
             if not isinstance(parsed, dict):
