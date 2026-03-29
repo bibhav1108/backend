@@ -38,6 +38,7 @@ class CampaignResponse(BaseModel):
     type: CampaignType
     status: CampaignStatus
     volunteers_required: int
+    description: Optional[str]
     start_time: Optional[datetime]
     end_time: Optional[datetime]
     created_at: datetime
@@ -127,7 +128,8 @@ async def broadcast_mission_invitation(
     msg = (
         f"📢 *Sahyog Setu - New Mission TEAM Recruitment*\n\n"
         f"📝 *Campaign*: {campaign.name}\n"
-        f"🎯 *Purpose*: {campaign.type.name}\n"
+        f"🎯 *Mission*: {campaign.type.name}\n"
+        f"📖 *Detail*: {campaign.description or 'No additional details provided.'}\n"
         f"📅 *Schedule*: {campaign.start_time.strftime('%Y-%m-%d %H:%M') if campaign.start_time else 'TBD'}\n"
         f"📍 *Location*: {campaign.location_address or 'Check with Admin'}\n\n"
         f"Click below to join the mission pool! (Approval Required)"
