@@ -5,13 +5,30 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, delete
 from sqlalchemy.orm import selectinload
-from backend.app.database import get_db
-from backend.app.models import Volunteer, Dispatch, DispatchStatus, SurplusAlert, Organization, Need, VolunteerStats, NeedStatus, TelegramMessage
-from backend.app.services.otp import generate_otp_pair
+from backend.app.database import get_db, async_session
+from backend.app.models import (
+    Volunteer, 
+    MarketplaceDispatch, 
+    DispatchStatus, 
+    MarketplaceAlert, 
+    Organization, 
+    MarketplaceNeed, 
+    VolunteerStats, 
+    NeedStatus, 
+    TelegramMessage, 
+    NGO_Campaign,
+    MissionTeam,
+    CampaignParticipationStatus,
+    CampaignStatus
+)
+from backend.app.services.otp import generate_otp_pair, verify_otp
 from backend.app.services.telegram_service import telegram_service
-import os
+from backend.app.services.ai_service import ai_service
+from backend.app.services.media_service import media_service
 
 router = APIRouter()
+
+# --- Helper Functions ---
 
 async def log_telegram_message(db: AsyncSession, chat_id: str, message_id: int):
     """Save message ID to DB for 24h cleanup."""
@@ -28,31 +45,41 @@ async def send_and_log(db: AsyncSession, bg: BackgroundTasks, chat_id: str, text
         bg.add_task(log_telegram_message, db, chat_id, msg_id)
     return msg_id
 
-async def send_photo_and_log(db: AsyncSession, bg: BackgroundTasks, chat_id: str, photo_path: str, caption: str = "", **kwargs) -> Optional[int]:
-    msg_id = await telegram_service.send_photo(chat_id, photo_path, caption, **kwargs)
-    if msg_id:
-        bg.add_task(log_telegram_message, db, chat_id, msg_id)
-    return msg_id
-
-async def cleanup_old_messages(db: AsyncSession):
-    """Delete messages older than 24 hours from Telegram and DB."""
+async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int, bg: BackgroundTasks):
+    """
+    Background Task: Heavy-lifting AI parsing and summary card construction.
+    This prevents Telegram webhook timeouts.
+    """
     try:
-        cutoff = datetime.utcnow() - timedelta(hours=24)
-        stmt = select(TelegramMessage).where(TelegramMessage.created_at < cutoff)
-        result = await db.execute(stmt)
-        old_msgs = result.scalars().all()
-        
-        for msg in old_msgs:
-            # Attempt to delete from Telegram
-            await telegram_service.delete_message(msg.chat_id, msg.message_id)
-            # Delete from DB
-            await db.delete(msg)
-        
-        if old_msgs:
-            await db.commit()
-            print(f"[INFO] Cleaned up {len(old_msgs)} old telegram messages.")
+        async with async_session() as db:
+            parsed = await ai_service.parse_surplus_text(text)
+            if parsed:
+                # Check for Fallback notice
+                notice = "⚠️ *Plan B: Basic Sync Used (AI Busy)*\n\n" if parsed.get("fallback_used") else "🤖 *AI Summary - Please Confirm*\n\n"
+                
+                summary = (
+                    f"{notice}"
+                    f"📦 *Item*: {parsed.get('item', 'N/A')}\n"
+                    f"🔢 *Quantity*: {parsed.get('quantity', 'N/A')}\n"
+                    f"📍 *Location*: {parsed.get('location', 'N/A')}\n"
+                    f"📝 *Notes*: {parsed.get('notes', 'None')}\n\n"
+                    f"Is this correct? NGOs will use this to coordinate."
+                )
+                inline_kb = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "✅ Confirm", "callback_data": f"ai_confirm_{alert_id}"},
+                            {"text": "🔄 Edit", "callback_data": f"ai_edit_{alert_id}"}
+                        ]
+                    ]
+                }
+                await send_and_log(db=db, bg=bg, chat_id=chat_id, text=summary, reply_markup=inline_kb)
+            else:
+                await send_and_log(db=db, bg=bg, chat_id=chat_id, text="🙏 *Thank you!* Your report has been received and shared with local NGOs.")
     except Exception as e:
-        print(f"[ERROR] Cleanup failed: {e}")
+        print(f"[ERROR] Background AI Processing Failed: {e}")
+
+# --- Webhook Endpoint ---
 
 @router.post("/telegram")
 async def telegram_webhook(
@@ -61,25 +88,24 @@ async def telegram_webhook(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Handle incoming Telegram Bot updates (Messages, Contacts, Callbacks).
+    V2.0 Stability Webhook: Responds immediately and processes heavy AI tasks in the background.
     """
     try:
         data = await request.json()
-        print(f"[DEBUG] Webhook Data: {data}")
         
-        # --- 1. Handle Button Callbacks (Inline Buttons) ---
+        # --- 1. Handle Callbacks (Inline Buttons) ---
         if "callback_query" in data:
             callback = data["callback_query"]
             chat_id = str(callback["message"]["chat"]["id"])
             data_payload = callback.get("data", "")
             
-            # Identify Volunteer
             stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
             volunteer = (await db.execute(stmt)).scalar_one_or_none()
             
+            # Marketplace Flow
             if data_payload.startswith("accept_") and volunteer:
                 dispatch_id = int(data_payload.split("_")[1])
-                stmt = select(Dispatch).where(Dispatch.id == dispatch_id, Dispatch.volunteer_id == volunteer.id)
+                stmt = select(MarketplaceDispatch).where(MarketplaceDispatch.id == dispatch_id, MarketplaceDispatch.volunteer_id == volunteer.id)
                 dispatch = (await db.execute(stmt)).scalar_one_or_none()
                 
                 if dispatch and dispatch.status == DispatchStatus.SENT:
@@ -89,533 +115,62 @@ async def telegram_webhook(
                     dispatch.otp_expires_at = expires_at
                     await db.commit()
                     
-                    await send_and_log(db=db, bg=background_tasks, 
-                        chat_id=chat_id,
-                        text=f"🎫 *Mission Confirmed!*\n\nYour Pickup CODE is: `{raw_code}`\nValid for 45 mins."
+                    await send_and_log(db=db, bg=background_tasks, chat_id=chat_id,
+                        text=f"🎫 *Marketplace Mission Confirmed!*\n\nYour Pickup CODE is: `{raw_code}`\nProvide this to the donor once items are collected."
                     )
-                    
-                    # --- Notify Donor if applicable ---
-                    stmt_need = select(Need).where(Need.id == dispatch.need_id)
-                    need = (await db.execute(stmt_need)).scalar_one_or_none()
-                    if need and need.surplus_alert_id:
-                        stmt_alert = select(SurplusAlert).where(SurplusAlert.id == need.surplus_alert_id)
-                        alert = (await db.execute(stmt_alert)).scalar_one_or_none()
-                        if alert:
-                            donor_msg = (
-                                f"🚚 *Volunteer On The Way!*\n\n"
-                                f"Volunteer *{volunteer.name}* has accepted your donation pickup.\n"
-                                f"Please ask them for their *6-digit verification code* once they arrive."
-                            )
-                            inline_kb = {
-                                "inline_keyboard": [
-                                    [{"text": "✅ Confirm Pickup", "callback_data": f"confirm_pickup_{dispatch.id}"}]
-                                ]
-                            }
-                            await send_and_log(db=db, bg=background_tasks, 
-                                chat_id=alert.chat_id, 
-                                text=donor_msg,
-                                reply_markup=inline_kb
-                            )
+
+            # Campaign Flow: Join Pool
+            if data_payload.startswith("join_mission_") and volunteer:
+                campaign_id = int(data_payload.split("_")[2])
+                stmt_check = select(MissionTeam).where(MissionTeam.campaign_id == campaign_id, MissionTeam.volunteer_id == volunteer.id)
+                existing = (await db.execute(stmt_check)).scalar_one_or_none()
+                if not existing:
+                    db.add(MissionTeam(campaign_id=campaign_id, volunteer_id=volunteer.id, status=CampaignParticipationStatus.PENDING))
+                    await db.commit()
+                    await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="✅ *Request Sent!* Waiting for NGO selection.")
+
+            # AI Confirmation Callbacks
+            if data_payload.startswith("ai_confirm_"):
+                alert_id = int(data_payload.split("_")[2])
+                stmt = select(MarketplaceAlert).where(MarketplaceAlert.id == alert_id)
+                alert = (await db.execute(stmt)).scalar_one_or_none()
+                if alert:
+                    alert.is_confirmed = True
+                    alert.is_processed = False
+                    await db.commit()
+                    await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="✅ *Report Confirmed!* Your donation is now live for NGOs. ✨🤝")
             
-            if data_payload.startswith("confirm_pickup_"):
-                dispatch_id = int(data_payload.split("_")[2])
-                await send_and_log(db=db, bg=background_tasks, 
-                    chat_id=chat_id,
-                    text=f"📋 *Verification Required*\n\nPlease enter the *6-digit code* provided by the volunteer to complete the pickup for Mission `#{dispatch_id}`."
-                )
-
-            # --- Role Selection Callbacks ---
-            if data_payload == "join_volunteer":
-                # Check if already active
-                stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
-                volunteer = (await db.execute(stmt)).scalar_one_or_none()
-                
-                if volunteer and volunteer.telegram_active:
-                    await send_and_log(db=db, bg=background_tasks, 
-                        chat_id=chat_id,
-                        text=f"✅ *Already Verified!*\n\nWelcome back, *{volunteer.name}*! You are already linked and ready for missions. 🚀"
-                    )
-                else:
-                    # Show the share contact button
-                    kb = {
-                        "keyboard": [[{"text": "📱 Share Contact to Verify", "request_contact": True}]],
-                        "one_time_keyboard": True,
-                        "resize_keyboard": True
-                    }
-                    await send_and_log(db=db, bg=background_tasks, 
-                        chat_id=chat_id,
-                        text="Great! To link your volunteer account, please click the button below to share your contact details with us.",
-                        reply_markup=kb
-                    )
-                
-            if data_payload == "donate_surplus":
-                # Check if we already have this donor's contact
-                stmt = select(SurplusAlert).where(SurplusAlert.chat_id == chat_id, SurplusAlert.phone_number != None)
-                existing_alert = (await db.execute(stmt)).first()
-                
-                if existing_alert:
-                    instr = (
-                        "📦 *Great! Reporting Surplus Items*\n\n"
-                        "To help local NGOs coordinate better, please send your donation details in this format:\n\n"
-                        "`[ITEM] [QUANTITY] [LOCATION] [ANY NOTES]`\n\n"
-                        "*Example*: `Rice 50kg Sector 15 Near Park.`"
-                    )
-                    await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=instr)
-                else:
-                    # Trigger donation flow instructions
-                    await send_and_log(db=db, bg=background_tasks, 
-                        chat_id=chat_id,
-                        text="🎁 *Donation Portal*\n\nTo report surplus, please share your contact first so NGOs can coordinate the pickup with you.",
-                        reply_markup={
-                            "keyboard": [[{"text": "📱 Share Donor Contact", "request_contact": True}]],
-                            "one_time_keyboard": True,
-                            "resize_keyboard": True
-                        }
-                    )
-
             return {"status": "callback_handled"}
 
-        if "message" not in data:
-            return {"status": "ignored"}
-
+        # --- 2. Handle Text Messages ---
+        if "message" not in data: return {"status": "ignored"}
+        
         message = data["message"]
         chat_id = str(message["chat"]["id"])
-        message_id = message.get("message_id")
         text = message.get("text", "").strip()
         
-        # Log incoming message
-        if message_id:
-            background_tasks.add_task(log_telegram_message, db, chat_id, message_id)
-        
-        # Trigger cleanup background task
-        background_tasks.add_task(cleanup_old_messages, db)
-        
-        # --- 2. Handle /start and Help ---
         if text == "/start":
-            # Check if already active
-            stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
-            volunteer = (await db.execute(stmt)).scalar_one_or_none()
-            
-            if volunteer and volunteer.telegram_active:
-                # Ensure menu is synced for the volunteer
-                await telegram_service.set_bot_commands(chat_id=chat_id)
-                await send_and_log(db=db, bg=background_tasks, 
-                    chat_id=chat_id,
-                    text=f"Welcome back, *{volunteer.name}*! You are active and ready for missions. 🚀"
-                )
-            else:
-                first_name = message.get("from", {}).get("first_name", "there")
-                welcome_caption = (
-                    f"Hey 👋 *{first_name}*!\n\n"
-                    f"🤝 *WELCOME TO SAHYOG SETU*\n\n"
-                    f"The ultimate bridge connecting your kindness (Surplus Food) to those who need it most.\n\n"
-                    f"How would you like to contribute today?\n"
-                    f"👇 *Select your role below*:"
-                )
-                
-                inline_kb = {
-                    "inline_keyboard": [
-                        [{"text": "🙋‍♂️ Join as Volunteer", "callback_data": "join_volunteer"}],
-                        [{"text": "🎁 Donate Surplus Food", "callback_data": "donate_surplus"}]
-                    ]
-                }
-                
-                # Check for local poster
-                import os
-                poster_path = "backend/app/static/welcome.png"
-                if not os.path.exists(poster_path):
-                    # Fallback to text if image missing
-                    await send_and_log(db=db, bg=background_tasks, 
-                        chat_id=chat_id,
-                        text=welcome_caption,
-                        reply_markup=inline_kb
-                    )
-                else:
-                    await send_photo_and_log(db=db, bg=background_tasks, 
-                        chat_id=chat_id,
-                        photo_path=poster_path,
-                        caption=welcome_caption,
-                        reply_markup=inline_kb
-                    )
+            welcome_text = "🤝 *WELCOME TO SAHYOG SETU V2.0*"
+            inline_kb = {"inline_keyboard": [[{"text": "🙋 Join as Volunteer", "callback_data": "join_volunteer"}, {"text": "🎁 Donate Surplus", "callback_data": "donate_surplus"}]]}
+            await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=welcome_text, reply_markup=inline_kb)
             return {"status": "start_sent"}
 
-        if text == "/help":
-            help_text = (
-                "🆘 *Sahyog Setu Help*\n\n"
-                "• `/status` - Check your volunteer stats and trust tier.\n"
-                "• Use the buttons in mission alerts to Accept or Decline tasks.\n"
-                "• If you have surplus food to report, just type the details here!"
-            )
-            await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=help_text)
-            return {"status": "help_sent"}
-
-        if text == "/leaderboard":
-            # Fetch top 5 volunteers by completions
-            stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
-            volunteer = (await db.execute(stmt)).scalar_one_or_none()
-            if not volunteer or not volunteer.telegram_active:
-                await telegram_service.send_message(chat_id=chat_id, text="🔒 This command is for verified volunteers only.")
-                return {"status": "unauthorized"}
-
-            stmt = (
-                select(Volunteer, VolunteerStats)
-                .join(VolunteerStats, Volunteer.id == VolunteerStats.volunteer_id)
-                .order_by(desc(VolunteerStats.completions))
-                .limit(5)
-            )
-            results = (await db.execute(stmt)).all()
+        # Surplus Reporting (The AI Ingestion Flow)
+        if text and not text.startswith("/"):
+            # Check for role/context first
+            stmt = select(MarketplaceAlert).where(MarketplaceAlert.chat_id == chat_id, MarketplaceAlert.message_body == "[Pending Report]")
+            pending = (await db.execute(stmt)).scalar_one_or_none()
             
-            if results:
-                leaderboard_text = "🏆 *Volunteer Leaderboard*\n\n"
-                for i, (vol, stats) in enumerate(results, 1):
-                    medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🎖"
-                    leaderboard_text += f"{medal} *{vol.name}*: `{stats.completions}` completions\n"
-                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=leaderboard_text)
-            else:
-                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="🏆 Leaderboard is empty. Be the first to complete a mission!")
-            return {"status": "leaderboard_sent"}
-
-        if text == "/my_missions" or text == "/status":
-            stmt = (
-                select(Volunteer)
-                .where(Volunteer.telegram_chat_id == chat_id)
-                .options(selectinload(Volunteer.stats))
-            )
-            volunteer = (await db.execute(stmt)).scalar_one_or_none()
-            
-            if volunteer and volunteer.telegram_active:
-                stats = volunteer.stats
-                status_report = (
-                    f"👤 *Volunteer Profile*\n"
-                    f"Name: {volunteer.name}\n"
-                    f"Trust Tier: `{volunteer.trust_tier.name}`\n"
-                    f"Completions: `{stats.completions if stats else 0}`\n"
-                    f"No-Shows: `{stats.no_shows if stats else 0}`\n\n"
-                    f"Status: *Active*"
-                )
-                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=status_report)
-            else:
-                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="🔒 This profile is for verified volunteers only. Please link your account first.")
-            return {"status": "status_sent"}
-
-        if text == "/about":
-            about_text = (
-                "ℹ️ *About Sahyog Setu*\n\n"
-                "Sahyog Setu is an AI-powered logistics bridge connecting surplus food from donors to NGOs in real-time.\n\n"
-                "🌍 *Mission*: Zero Hunger through efficient distribution.\n"
-                "🤝 *Partners*: Helping local NGOs scale their impact with secure tracking and volunteer coordination."
-            )
-            await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=about_text)
-            return {"status": "about_sent"}
-
-        if text == "/tutorial":
-            tutorial_text = (
-                "📖 *How to use Sahyog Setu*\n\n"
-                "1️⃣ **For Volunteers**: Register via `/start`, click 'I am a Volunteer', and share your contact. You'll receive mission alerts. Click 'Accept', get the OTP, and provide it at the pickup point.\n\n"
-                "2️⃣ **For Donors**: Click '🎁 Donate Surplus', follow the instructions to report items. Wait for notification when a volunteer is nearby, and verify them using `CONFIRM <CODE>`."
-            )
-            await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=tutorial_text)
-            return {"status": "tutorial_sent"}
-
-        # --- Smart OTP Detection (6 Digits) ---
-        if text.isdigit() and len(text) == 6:
-            # Check if this user is a donor with a pending dispatch
-            stmt = (
-                select(Dispatch)
-                .join(Need, Dispatch.need_id == Need.id)
-                .join(SurplusAlert, Need.surplus_alert_id == SurplusAlert.id)
-                .where(
-                    SurplusAlert.chat_id == chat_id,
-                    Dispatch.status == DispatchStatus.ACCEPTED, # Accepted by volunteer
-                    Dispatch.otp_used == False
-                )
-                .order_by(desc(Dispatch.id))
-                .limit(1)
-            )
-            dispatch = (await db.execute(stmt)).scalar_one_or_none()
-            
-            if dispatch:
-                from backend.app.services.otp import verify_otp
-                if verify_otp(text, dispatch.otp_hash):
-                    dispatch.otp_used = True
-                    dispatch.status = DispatchStatus.COMPLETED
-                    
-                    need_stmt = select(Need).where(Need.id == dispatch.need_id)
-                    need = (await db.execute(need_stmt)).scalar_one()
-                    need.status = NeedStatus.COMPLETED
-                    
-                    # Update stats
-                    stats_stmt = select(VolunteerStats).where(VolunteerStats.volunteer_id == dispatch.volunteer_id)
-                    stats = (await db.execute(stats_stmt)).scalar_one_or_none()
-                    if stats:
-                        stats.completions += 1
-                        
-                    await db.commit()
-                    await send_and_log(db=db, bg=background_tasks, 
-                        chat_id=chat_id,
-                        text="🎉 *Delivery Confirmed!* Thank you for your kindness. The mission is officially complete! ❤️"
-                    )
-                    
-                    # Notify Volunteer
-                    vol_stmt = select(Volunteer).where(Volunteer.id == dispatch.volunteer_id)
-                    vol = (await db.execute(vol_stmt)).scalar_one()
-                    await send_and_log(db=db, bg=background_tasks, 
-                        chat_id=vol.telegram_chat_id,
-                        text=f"✅ *Mission # {dispatch.id} Complete!*\nThe donor has verified the code. Great work! 🏆"
-                    )
-                    return {"status": "otp_verified"}
-                else:
-                    await send_and_log(db=db, bg=background_tasks, 
-                        chat_id=chat_id,
-                        text="❌ *Invalid Code.* Please re-check the 6 digits from the volunteer's phone."
-                    )
-                    return {"status": "otp_failed"}
-
-        if text == "/cancel":
-            # Identify Volunteer
-            stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
-            volunteer = (await db.execute(stmt)).scalar_one_or_none()
-            if not volunteer or not volunteer.telegram_active:
-                await telegram_service.send_message(chat_id=chat_id, text="🔒 This command is for verified volunteers only.")
-                return {"status": "unauthorized"}
-
-            # Cancel the latest active dispatch for this volunteer
-            stmt = (
-                select(Dispatch)
-                .join(Volunteer, Dispatch.volunteer_id == Volunteer.id)
-                .where(Volunteer.telegram_chat_id == chat_id, Dispatch.status == DispatchStatus.SENT)
-                .order_by(desc(Dispatch.created_at))
-            )
-            dispatch = (await db.execute(stmt)).scalar_one_or_none()
-            if dispatch:
-                dispatch.status = DispatchStatus.FAILED
+            if pending:
+                pending.message_body = text
                 await db.commit()
-                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="⚠️ *Mission Cancelled*. Please avoid cancellations as they affect your Trust Tier.")
-            else:
-                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="❌ No active missions found to cancel.")
-            return {"status": "cancel_handled"}
-
-        if text == "/donate" or text == "🎁 Donate Surplus":
-            # Check if we already have this donor's contact
-            stmt = select(SurplusAlert).where(SurplusAlert.chat_id == chat_id, SurplusAlert.phone_number != None)
-            existing_alert = (await db.execute(stmt)).first()
-            
-            if existing_alert:
-                instr = (
-                    "📦 *Great! Reporting Surplus Items*\n\n"
-                    "To help local NGOs coordinate better, please send your donation details in this format:\n\n"
-                    "`[ITEM] [QUANTITY] [LOCATION] [ANY NOTES]`\n\n"
-                    "*Example*: `Rice 50kg Sector 15 Near Park. Ready for pickup till 8 PM.`"
-                )
-                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=instr)
-            else:
-                donor_keyboard = {
-                    "keyboard": [[{"text": "📱 Share Contact for NGOs", "request_contact": True}]],
-                    "one_time_keyboard": True,
-                    "resize_keyboard": True
-                }
-                await send_and_log(db=db, bg=background_tasks, 
-                    chat_id=chat_id,
-                    text="To report surplus, please share your contact first so NGOs can coordinate the pickup with you.",
-                    reply_markup=donor_keyboard
-                )
-            return {"status": "donor_onboarding_started"}
-
-        # --- 2.6 Handle Donor CONFIRM command ---
-        if text.upper().startswith("CONFIRM"):
-            parts = text.split()
-            if len(parts) > 1:
-                otp_code = parts[1].strip()
-                # Find the dispatch linked to this donor's alert
-                stmt = (
-                    select(Dispatch)
-                    .join(Need, Dispatch.need_id == Need.id)
-                    .join(SurplusAlert, Need.surplus_alert_id == SurplusAlert.id)
-                    .where(SurplusAlert.chat_id == chat_id, Dispatch.otp_used == False)
-                    .order_by(Dispatch.created_at.desc())
-                )
-                from backend.app.services.otp import verify_otp
-                result = await db.execute(stmt)
-                dispatch = result.scalar_one_or_none()
-                
-                if dispatch:
-                    if verify_otp(otp_code, dispatch.otp_hash):
-                        dispatch.otp_used = True
-                        dispatch.status = DispatchStatus.CONFIRMED
-                        
-                        need_stmt = select(Need).where(Need.id == dispatch.need_id)
-                        need = (await db.execute(need_stmt)).scalar_one()
-                        need.status = NeedStatus.COMPLETED
-                        
-                        await db.commit()
-                        await send_and_log(db=db, bg=background_tasks, 
-                            chat_id=chat_id,
-                            text="✅ *Mission Complete!* Thank you for your donation. Your impact has been recorded. 🙏"
-                        )
-                        return {"status": "donor_verified"}
-                    else:
-                        await send_and_log(db=db, bg=background_tasks, 
-                            chat_id=chat_id,
-                            text="❌ *Invalid Code*. Please check the code provided by the volunteer."
-                        )
-                        return {"status": "donor_verify_failed"}
-                else:
-                    await send_and_log(db=db, bg=background_tasks, 
-                        chat_id=chat_id,
-                        text="❌ *No active mission* found for your donation alerts."
-                    )
-                    return {"status": "no_active_mission"}
-
-        # --- 2.5 Handle Manual ACTIVATE command ---
-        if text.upper().startswith("ACTIVATE"):
-            parts = text.split()
-            if len(parts) > 1:
-                phone = parts[1].replace("+", "").strip()
-                # Match with DB
-                stmt = (
-                    select(Volunteer)
-                    .where(Volunteer.phone_number.like(f"%{phone[-10:]}%"))
-                    .options(selectinload(Volunteer.organization))
-                )
-                volunteer = (await db.execute(stmt)).scalar_one_or_none()
-                
-                if volunteer:
-                    volunteer.telegram_chat_id = chat_id
-                    volunteer.telegram_active = True
-                    await db.commit()
-                    # Trigger menu sync for volunteer
-                    await telegram_service.set_bot_commands(chat_id=chat_id)
-                    welcome_text = (
-                        f"🎉 *Successfully Onboarded (Manual)!*\n\n"
-                        f"👤 *Volunteer*: {volunteer.name}\n"
-                        f"🏢 *Organization*: {volunteer.organization.name}\n"
-                        f"📱 *Verified*: {volunteer.phone_number}\n\n"
-                        f"You are now linked to *{volunteer.organization.name}*. 🚀"
-                    )
-                    await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=welcome_text)
-                    return {"status": "linked_manual"}
-                else:
-                    await send_and_log(db=db, bg=background_tasks, 
-                        chat_id=chat_id,
-                        text="❌ *Error*: Number not found in our NGO database."
-                    )
-                    return {"status": "link_manual_failed"}
-
-        # --- 3. Handle Contact Sharing (Verification) ---
-        if "contact" in message:
-            contact = message["contact"]
-            phone = contact["phone_number"].replace("+", "").strip()
-            
-            # Match with DB
-            stmt = (
-                select(Volunteer)
-                .where(Volunteer.phone_number.like(f"%{phone[-10:]}%")) # Match last 10 digits
-                .options(selectinload(Volunteer.organization))
-            )
-            volunteer = (await db.execute(stmt)).scalar_one_or_none()
-            
-            if volunteer:
-                volunteer.telegram_chat_id = chat_id
-                volunteer.telegram_active = True
-                await db.commit()
-                # Trigger menu sync for volunteer
-                await telegram_service.set_bot_commands(chat_id=chat_id)
-                # Rich Onboarding Message
-                welcome_text = (
-                    f"🎉 *Successfully Onboarded!*\n\n"
-                    f"👤 *Volunteer*: {volunteer.name}\n"
-                    f"🏢 *Organization*: {volunteer.organization.name}\n"
-                    f"📱 *Verified*: {volunteer.phone_number}\n\n"
-                    f"You are now linked to *{volunteer.organization.name}*. "
-                    f"You will receive mission alerts from them directly in this chat. 🚀"
-                )
-                await send_and_log(db=db, bg=background_tasks, 
-                    chat_id=chat_id,
-                    text=welcome_text
-                )
-                return {"status": "linked"}
-            else:
-                # This could be a DONOR sharing contact
-                # Check if they recently clicked "Donate Surplus" or just share contact
-                # We'll save it as a placeholder SurplusAlert or just confirmation
-                donor_name = contact.get("first_name", "Donor")
-                
-                # Save as a pending alert (without body yet)
-                alert = SurplusAlert(
-                    chat_id=chat_id,
-                    phone_number=phone,
-                    donor_name=donor_name,
-                    message_body="[Pending Report]"
-                )
-                db.add(alert)
-                await db.commit()
-                
-                instr = (
-                    "✅ *Contact Verified!*\n\n"
-                    "Now, please send your donation details in this format:\n\n"
-                    "`[ITEM] [QUANTITY] [LOCATION] [ANY NOTES]`\n\n"
-                    "*Example*: `Rice 50kg Sector 15 Near Park. Ready for pickup till 8 PM.`"
-                )
-                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text=instr)
-                return {"status": "donor_contact_saved"}
-
-        # --- 4. Fallback: Donor Flow ---
-        # 1. First check if there's a pending alert (takes precedence for any user)
-        stmt = (
-            select(SurplusAlert)
-            .where(SurplusAlert.chat_id == chat_id, SurplusAlert.message_body == "[Pending Report]")
-            .order_by(desc(SurplusAlert.created_at))
-        )
-        result = await db.execute(stmt)
-        pending_alerts = result.scalars().all()
-        
-        if pending_alerts:
-            # Update the latest one (Works for both Volunteers and Donors)
-            main_alert = pending_alerts[0]
-            main_alert.message_body = text
-            
-            # Cleanup duplicates/spam (excluding those referenced by needs to avoid ForeignKeyViolation)
-            if len(pending_alerts) > 1:
-                extra_ids = [a.id for a in pending_alerts[1:]]
-                # Check for references in 'needs' table
-                needs_match_stmt = select(Need.surplus_alert_id).where(Need.surplus_alert_id.in_(extra_ids))
-                referenced_ids = (await db.execute(needs_match_stmt)).scalars().all()
-                
-                delete_ids = [eid for eid in extra_ids if eid not in referenced_ids]
-                if delete_ids:
-                    await db.execute(delete(SurplusAlert).where(SurplusAlert.id.in_(delete_ids)))
-            
-            await db.commit()
-            await send_and_log(db=db, bg=background_tasks, 
-                chat_id=chat_id,
-                text="🙏 *Thank you!* Your surplus report has been shared with local NGOs."
-            )
-            return {"status": "surplus_saved"}
-
-        # 2. If no pending alert, check if this is a known volunteer
-        stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
-        volunteer = (await db.execute(stmt)).scalar_one_or_none()
-        
-        if not volunteer:
-            # This is a new donor sending a direct message without being in a pending state
-            # Save as new Surplus Alert
-            alert = SurplusAlert(
-                chat_id=chat_id,
-                message_body=text,
-                donor_name=message.get("from", {}).get("first_name", "Anonymous Donor")
-            )
-            db.add(alert)
-            await db.commit()
-            
-            await send_and_log(db=db, bg=background_tasks, 
-                chat_id=chat_id,
-                text="🙏 *Thank you!* Your surplus report has been shared with local NGOs."
-            )
-            return {"status": "surplus_saved"}
+                # --- Non-Blocking AI Orchestration ---
+                await send_and_log(db=db, bg=background_tasks, chat_id=chat_id, text="Analyzing your report... 🤖 (Hold on a sec!)")
+                background_tasks.add_task(process_ai_surplus_report, chat_id, text, pending.id, background_tasks)
+                return {"status": "ai_task_queued"}
 
     except Exception as e:
-        print(f"[ERROR] Webhook Task Failed: {e}")
-        traceback.print_exc()
-        return {"status": "error", "message": str(e)}
+        print(f"[ERROR] Webhook Failed: {e}")
+        return {"status": "error"}
 
     return {"status": "ignored"}

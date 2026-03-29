@@ -14,6 +14,7 @@ class InventoryBase(BaseModel):
     item_name: str
     quantity: float
     unit: str
+    category: str = "OTHERS"
 
 class InventoryCreate(InventoryBase):
     pass
@@ -22,10 +23,12 @@ class InventoryUpdate(BaseModel):
     quantity: Optional[float] = None
     item_name: Optional[str] = None
     unit: Optional[str] = None
+    category: Optional[str] = None
 
 class InventoryResponse(InventoryBase):
     id: int
     org_id: int
+    reserved_quantity: float = 0.0
 
     class Config:
         from_attributes = True

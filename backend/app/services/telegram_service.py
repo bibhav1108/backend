@@ -1,6 +1,6 @@
 import httpx
 from backend.app.config import settings
-from typing import Optional
+from typing import Optional, List
 import logging
 import json
 import os
@@ -90,6 +90,20 @@ class TelegramService:
             logger.error(f"[Telegram ERROR] Photo Exception: {e}")
             return None
 
+    async def broadcast_photo(self, chat_ids: List[str], photo_url: str, caption: str) -> dict:
+        """
+        Broadcast a photo + caption to multiple chat IDs.
+        Returns a summary of successes and failures.
+        """
+        results = {"success": 0, "failed": 0}
+        for chat_id in chat_ids:
+            msg_id = await self.send_photo(chat_id, photo_url, caption)
+            if msg_id:
+                results["success"] += 1
+            else:
+                results["failed"] += 1
+        return results
+
     async def delete_message(self, chat_id: str, message_id: int) -> bool:
         """
         Delete a message from a chat.
@@ -106,6 +120,26 @@ class TelegramService:
             return response.status_code == 200
         except Exception:
             return False
+
+    async def get_file_url(self, file_id: str) -> Optional[str]:
+        """
+        Get the download URL for a file from Telegram.
+        """
+        if not self.api_url:
+            return None
+            
+        url = f"{self.api_url}/getFile"
+        client = self._get_client()
+        try:
+            response = await client.post(url, json={"file_id": file_id})
+            if response.status_code == 200:
+                file_path = response.json().get("result", {}).get("file_path")
+                if file_path:
+                    token = settings.TELEGRAM_BOT_TOKEN
+                    return f"https://api.telegram.org/file/bot{token}/{file_path}"
+            return None
+        except Exception:
+            return None
 
     async def set_bot_commands(self, chat_id: Optional[str] = None) -> bool:
         """

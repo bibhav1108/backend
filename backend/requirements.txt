@@ -11,3 +11,8 @@ geoalchemy2==0.14.3
 httpx==0.27.0
 email-validator>=2.0.0
 bcrypt==4.0.1
+google-generativeai
+langchain-google-genai
+langchain
+cloudinary
+python-dotenv
