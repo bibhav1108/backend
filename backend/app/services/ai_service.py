@@ -6,6 +6,9 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from backend.app.config import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AIService:
     def __init__(self):
@@ -13,13 +16,17 @@ class AIService:
         if self.api_key:
             os.environ["GOOGLE_API_KEY"] = self.api_key
             self.model = ChatGoogleGenerativeAI(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 temperature=0,
-                max_retries=1 # Reduced for faster fallback
+                max_retries=2
             )
             self.parser = JsonOutputParser()
             self.prompt = ChatPromptTemplate.from_messages([
-                ("system", "Extract donation details from the user's message into JSON. Fields: item, quantity, location, notes. Return ONLY valid JSON."),
+                ("system", (
+                    "You are a logistics assistant for Sahyog Setu. "
+                    "Extract donation details into JSON with fields: item, quantity, location, notes. "
+                    "If a field is missing, use 'N/A'. Return ONLY the JSON object."
+                )),
                 ("human", "{text}")
             ])
             self.chain = self.prompt | self.model | self.parser
@@ -32,17 +39,17 @@ class AIService:
         Plan B: Basic pattern matching if Gemini is exhausted.
         """
         # Simple extraction for " [Item] [Qty] "
-        qty_match = re.search(r'(\d+\s*(?:kg|kg\.|packets|packets\.|ltr|litres))', text, re.IGNORECASE)
-        quantity = qty_match.group(1) if qty_match else "Unspecified Qty"
+        qty_match = re.search(r'(\d+\s*(?:kg|kg\.|packets|packets\.|ltr|litres|persons|units))', text, re.IGNORECASE)
+        quantity = qty_match.group(1) if qty_match else "N/A"
         
-        # Assume first words before quantity or first 2 words are the item
-        content = text.split(quantity)[0].strip() if qty_match else text[:20]
+        # Assume content before quantity is the item
+        content = text.split(quantity)[0].strip() if qty_match else text[:30].strip()
         
         return {
-            "item": content or "Surplus Food",
+            "item": content or "Donation Item",
             "quantity": quantity,
-            "location": "See Raw Message",
-            "notes": "AI Exhausted - Basic Sync Used",
+            "location": "See Text",
+            "notes": "Plan B: AI Busy",
             "fallback_used": True
         }
 
@@ -57,7 +64,8 @@ class AIService:
             # Attempt AI Parsing
             return await self.chain.ainvoke({"text": text})
         except Exception as e:
-            print(f"[AI EXHAUSTED] Falling back to manual pattern matching: {e}")
+            # Detailed error logging for debugging
+            logger.error(f"[AI ERROR] Gemini invocation failed: {str(e)}")
             return self._regex_fallback(text)
 
 ai_service = AIService()
