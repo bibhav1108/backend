@@ -72,11 +72,22 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int):
         async with async_session() as db:
             print(f"[TRACE] Invoking Gemini Parser for: {text[:20]}...")
             parsed = await ai_service.parse_surplus_text(text)
-            print(f"[TRACE] Gemini Response Received: {parsed is not None}")
+            print(f"[TRACE] Gemini Response Received: {parsed is not None} | Type: {type(parsed)}")
             
+            # --- Normalize AI Output (Handle Lists from Gemini) ---
+            if isinstance(parsed, list) and len(parsed) > 0:
+                print(f"[TRACE] Multiple items detected. Normalizing list to first entry.")
+                # If it's a list, take the first item for the summary card
+                parsed = parsed[0]
+            
+            # Safety check to prevent AttributeError
+            if not isinstance(parsed, dict):
+                print(f"[TRACE] Final response is not a dictionary. Discarding.")
+                parsed = None
+
             # --- Filtering Logic: Ignore empty/garbage reports ---
-            if not parsed or not parsed.get("item") or parsed.get("item") in ["N/A", "Donation Item"]:
-                print(f"[TRACE] Discarding garbage report.")
+            if not parsed or not parsed.get("item") or str(parsed.get("item")).lower() in ["n/a", "donation item"]:
+                print(f"[TRACE] Discarding garbage/empty report.")
                 # Delete the alert from DB to keep the dashboard clean
                 stmt_del = delete(MarketplaceAlert).where(MarketplaceAlert.id == alert_id)
                 await db.execute(stmt_del)
