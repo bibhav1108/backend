@@ -57,4 +57,24 @@ Unlike the Marketplace (which is FCFS), Campaigns follow a **Strict Governance F
 
 ---
 
-**Sahyog Setu V2.0 is now ready for a high-impact dashboard UI!** 🏆🚀🌉✨
+## 📦 Inventory Management: Dual-Stock Architecture
+
+Frontend devs must distinguish between these two inventory sources in the UI:
+
+### 1. Internal Strategic Stock (`Inventory` Table)
+- **Source**: NGO's own warehouse/supplies.
+- **UI Component**: "Internal Warehouse" or "Main Stock".
+- **The Reservation Logic**:
+    - When a Mission is **Planned**, items move into the `reserved_quantity` bucket (Field: `reserved_quantity`).
+    - **Visual**: Show `Available = Total Quantity - Reserved Quantity`.
+    - **Trigger**: When a mission is marked **COMPLETED**, the backend automatically deducts the amount from both `quantity` and `reserved_quantity`.
+
+### 2. Marketplace Recovery Stock (`MarketplaceInventory` Table)
+- **Source**: Automatically populated via Donor alerts (The Marketplace flow).
+- **UI Component**: "Recovered Goods" or "Marketplace History".
+- **Logic**: This is a **Log-only** table for recovered food/items. It is **Read-Only** from the Mission Control perspective but shows a historical log of what has been saved.
+- **Integration**: In future versions, NGOs can "Merge" recovered goods into their Main Stock for use in Campaigns.
+
+### 🛡️ Implementation Rules:
+- **Never deduct from `MarketplaceInventory`** for a Campaign mission; only deduct from `Inventory` (Internal).
+- **Auto-Sync**: Ensure the "Main Stock" UI reflects the latest subtraction immediately after a Mission is finalized.
