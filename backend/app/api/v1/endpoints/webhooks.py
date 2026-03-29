@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Request, BackgroundTasks
+import os
 import traceback
 from typing import Optional
 from datetime import datetime, timedelta
@@ -27,6 +28,10 @@ from backend.app.services.ai_service import ai_service
 from backend.app.services.media_service import media_service
 
 router = APIRouter()
+
+# --- Shared Assets ---
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "static")
+WELCOME_PHOTO_PATH = os.path.join(STATIC_DIR, "welcome.png")
 
 # --- Helper Functions ---
 
@@ -164,8 +169,17 @@ async def telegram_webhook(
         if text == "/start":
             welcome_text = "🤝 *WELCOME TO SAHYOG SETU V2.0*\n\nYour smart companion for humanitarian impact. How can we help you save lives today? 🌍"
             inline_kb = {"inline_keyboard": [[{"text": "🙋 Join as Volunteer", "callback_data": "join_volunteer"}, {"text": "🎁 Donate Surplus", "callback_data": "donate_surplus"}]]}
-            await send_and_log(bg=background_tasks, chat_id=chat_id, text=welcome_text, reply_markup=inline_kb)
+            
+            # --- Fail-Safe Experience ---
+            # Try to send the local poster first
+            msg_id = await send_photo_and_log(bg=background_tasks, chat_id=chat_id, photo_url=WELCOME_PHOTO_PATH, caption=welcome_text, reply_markup=inline_kb)
+            
+            # If photo fails (e.g. file missing or API error), fallback to text-only
+            if not msg_id:
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text=welcome_text, reply_markup=inline_kb)
+                
             return {"status": "start_sent"}
+            
 
         # Surplus Reporting (The AI Ingestion Flow)
         if text and not text.startswith("/"):
