@@ -18,7 +18,8 @@ class AIService:
             self.model = ChatGoogleGenerativeAI(
                 model="gemini-2.5-flash",
                 temperature=0,
-                max_retries=2
+                max_retries=2,
+                request_timeout=20 # Fail fast to Plan B if API is slow
             )
             self.parser = JsonOutputParser()
             self.prompt = ChatPromptTemplate.from_messages([
