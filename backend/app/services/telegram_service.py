@@ -153,19 +153,19 @@ class TelegramService:
         url = f"{self.api_url}/setMyCommands"
         
         public_commands = [
-            {"command": "start", "description": "🚀 Main menu"},
-            {"command": "donate", "description": "🎁 Report surplus food"},
+            {"command": "start", "description": "🚀 Start helping"},
+            {"command": "donate", "description": "🎁 Donate extra food"},
             {"command": "about", "description": "ℹ️ About Sahyog Setu"},
             {"command": "help", "description": "🆘 Get assistance"},
             {"command": "tutorial", "description": "📖 How to use"}
         ]
         
         volunteer_commands = [
-            {"command": "start", "description": "🚀 Main menu"},
+            {"command": "start", "description": "🚀 Start helping"},
             {"command": "leaderboard", "description": "🏆 Top volunteers"},
-            {"command": "my_missions", "description": "👤 Profile & stats"},
+            {"command": "my_missions", "description": "👤 My missions & stats"},
             {"command": "cancel", "description": "⚠️ Cancel active mission"},
-            {"command": "donate", "description": "🎁 Report surplus food"},
+            {"command": "donate", "description": "🎁 Donate extra food"},
             {"command": "about", "description": "ℹ️ About Sahyog Setu"},
             {"command": "help", "description": "🆘 Get assistance"}
         ]

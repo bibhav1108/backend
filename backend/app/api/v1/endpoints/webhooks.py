@@ -90,7 +90,7 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int, bg: 
 
             if parsed:
                 # Check for Fallback notice
-                notice = "⚠️ *Plan B: Basic Sync Used (AI Busy)*\n\n" if parsed.get("fallback_used") else "🤖 *AI Summary - Please Confirm*\n\n"
+                notice = "⚠️ *Plan B: Basic Sync Used (AI Busy)*\n\n" if parsed.get("fallback_used") else "🤖 *Summary - Please Confirm*\n\n"
                 
                 summary = (
                     f"{notice}"
@@ -98,13 +98,13 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int, bg: 
                     f"🔢 *Quantity*: {parsed.get('quantity', 'N/A')}\n"
                     f"📍 *Location*: {parsed.get('location', 'N/A')}\n"
                     f"📝 *Notes*: {parsed.get('notes', 'None')}\n\n"
-                    f"✨ *Does this look correct?* Confirming will help local NGOs reach you faster."
+                    f"✨ *Is this correct?* Confirming will help local NGOs reach you faster."
                 )
                 inline_kb = {
                     "inline_keyboard": [
                         [
-                            {"text": "✅ Confirm", "callback_data": f"ai_confirm_{alert_id}"},
-                            {"text": "🔄 Edit", "callback_data": f"ai_edit_{alert_id}"}
+                            {"text": "✅ Yes, Confirm", "callback_data": f"ai_confirm_{alert_id}"},
+                            {"text": "🔄 No, Edit", "callback_data": f"ai_edit_{alert_id}"}
                         ]
                     ]
                 }
@@ -172,11 +172,10 @@ async def telegram_webhook(
                 await db.commit()
                 
                 format_msg = (
-                    "🎁 *Describe your surplus!*\n\n"
-                    "Please send us the details in this format:\n"
+                    "🎁 *Tell us about the food!*\n\n"
+                    "Please send us the details like this:\n"
                     "`[Item Name] [Quantity] [Location]`\n\n"
-                    "Example: `10kg Dal and Rice at Sector 62, Noida`\n\n"
-                    "Our AI will automatically parse these details! ✨"
+                    "Example: `10kg Dal and Rice at Sector 62, Noida` ✨"
                 )
                 await send_and_log(bg=background_tasks, chat_id=chat_id, text=format_msg)
 
@@ -258,8 +257,8 @@ async def telegram_webhook(
             return {"status": "registered"}
 
         if text == "/start":
-            welcome_text = "🤝 *WELCOME TO SAHYOG SETU V2.0*\n\nYour smart companion for humanitarian impact. How can we help you save lives today? 🌍"
-            inline_kb = {"inline_keyboard": [[{"text": "🙋 Join as Volunteer", "callback_data": "join_volunteer"}, {"text": "🎁 Donate Surplus", "callback_data": "donate_surplus"}]]}
+            welcome_text = "🤝 *WELCOME TO SAHYOG SETU*\n\nWe connect extra food to people who need it. How can we help you today? 🌍"
+            inline_kb = {"inline_keyboard": [[{"text": "🙋 Join Volunteer", "callback_data": "join_volunteer"}, {"text": "🎁 Donate Food", "callback_data": "donate_surplus"}]]}
             
             # --- Fail-Safe Experience ---
             # Try to send the local poster first
