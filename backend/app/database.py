@@ -160,7 +160,7 @@ async def run_migrations():
 
         # Final Cleanup: Remove references that cross-wire Marketplace and Campaign
         await conn.execute(text("ALTER TABLE marketplace_needs DROP COLUMN IF EXISTS campaign_id;"))
-        await conn.execute(text("ALTER TABLE ngo_campaigns DROP COLUMN IF EXISTS target_quantity;")) # Cleanup legacy JSON mixing if any
+       
 
     print("[Migrations] V2.0 Dual-Engine Sync Done.")
 
