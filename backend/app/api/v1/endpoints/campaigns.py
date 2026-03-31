@@ -27,6 +27,7 @@ class CampaignCreate(BaseModel):
     volunteers_required: int = 0
     required_skills: Optional[List[str]] = None
     location_address: Optional[str] = None
+    type: Optional[str] = "OTHER"
 
 class CampaignResponse(BaseModel):
     id: int
@@ -34,6 +35,11 @@ class CampaignResponse(BaseModel):
     description: Optional[str]
     status: CampaignStatus
     target_quantity: Optional[str]
+
+    type: Optional[str]  
+    items: Optional[dict] 
+    required_skills: Optional[List[str]]  
+
     start_time: Optional[datetime]
     end_time: Optional[datetime]
     volunteers_required: int
@@ -78,7 +84,8 @@ async def create_campaign(
         end_time=campaign_in.end_time,
         volunteers_required=campaign_in.volunteers_required,
         required_skills=campaign_in.required_skills,
-        location_address=campaign_in.location_address
+        location_address=campaign_in.location_address,
+        type=campaign_in.type,
     )
     db.add(new_campaign)
     
@@ -296,3 +303,12 @@ async def complete_campaign(
             "completion_time": datetime.utcnow()
         }
     }
+
+@router.get("/", response_model=List[CampaignResponse])
+async def list_campaigns(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    stmt = select(Campaign).where(Campaign.org_id == current_user.org_id)
+    result = await db.execute(stmt)
+    return result.scalars().all()
