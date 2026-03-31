@@ -93,11 +93,16 @@ class TelegramService:
     async def broadcast_photo(self, chat_ids: List[str], photo_url: str, caption: str) -> dict:
         """
         Broadcast a photo + caption to multiple chat IDs.
-        Returns a summary of successes and failures.
+        If photo_url is empty, falls back to text-only broadcast.
         """
         results = {"success": 0, "failed": 0}
         for chat_id in chat_ids:
-            msg_id = await self.send_photo(chat_id, photo_url, caption)
+            if not photo_url:
+                # Text-only fallback
+                msg_id = await self.send_message(chat_id, caption)
+            else:
+                msg_id = await self.send_photo(chat_id, photo_url, caption)
+                
             if msg_id:
                 results["success"] += 1
             else:

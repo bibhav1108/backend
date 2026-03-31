@@ -18,7 +18,6 @@ class Settings(BaseSettings):
 
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
-    CLOUDINARY_URL: Optional[str] = None
     
     # CORS Settings
     ALLOWED_ORIGINS: Union[List[str], str] = ["https://sahyog-setu-frontend.vercel.app", "http://localhost:3000"]

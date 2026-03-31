@@ -3,8 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from backend.app.database import get_db
 from backend.app.models import (
-    Campaign, CampaignStatus, Organization, Inventory, Need, 
-    Volunteer, CampaignParticipation, CampaignParticipationStatus, User
+    NGO_Campaign as Campaign, CampaignStatus, Organization, Inventory, 
+    Volunteer, MissionTeam as CampaignParticipation, CampaignParticipationStatus, User
 )
 from backend.app.api.deps import get_current_user
 from backend.app.services.telegram_service import telegram_service
@@ -82,7 +82,7 @@ async def create_campaign(
     )
     db.add(new_campaign)
     
-    # 1. Inventory Reservation
+    # 1. Inventory Reservation & Validation
     if campaign_in.items:
         for item_name, qty in campaign_in.items.items():
             stmt = select(Inventory).where(
@@ -90,8 +90,24 @@ async def create_campaign(
                 Inventory.item_name == item_name
             )
             inv_item = (await db.execute(stmt)).scalar_one_or_none()
-            if inv_item:
-                inv_item.reserved_quantity += float(qty)
+            
+            if not inv_item:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Item '{item_name}' not found in your inventory."
+                )
+            
+            available_stock = inv_item.quantity - inv_item.reserved_quantity
+            requested_qty = float(qty)
+            
+            if available_stock < requested_qty:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Insufficient stock for '{item_name}'. Available: {available_stock}, Requested: {requested_qty}"
+                )
+            
+            # If all checks pass, reserve the stock
+            inv_item.reserved_quantity += requested_qty
     
     await db.flush() # Get ID for broadcast
 

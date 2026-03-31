@@ -25,7 +25,6 @@ from backend.app.models import (
 from backend.app.services.otp import generate_otp_pair, verify_otp
 from backend.app.services.telegram_service import telegram_service
 from backend.app.services.ai_service import ai_service
-from backend.app.services.media_service import media_service
 
 router = APIRouter()
 

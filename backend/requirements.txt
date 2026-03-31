@@ -14,5 +14,4 @@ bcrypt==4.0.1
 google-generativeai
 langchain-google-genai
 langchain
-cloudinary
 python-dotenv
