@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from backend.app.database import get_db
+from backend.app.config import settings
 from backend.app.models import (
     NGO_Campaign as Campaign, CampaignStatus, Organization, Inventory, 
     Volunteer, MissionTeam as CampaignParticipation, CampaignParticipationStatus, User
@@ -133,7 +134,7 @@ async def create_campaign(
             f"to {new_campaign.end_time.strftime('%H:%M') if new_campaign.end_time else 'TBD'}\n"
             f"💼 *Skills Needed:* {', '.join(new_campaign.required_skills) if new_campaign.required_skills else 'General Help'}\n"
             f"📍 *Location:* {new_campaign.location_address or 'See instructions'}\n\n"
-            f"Click [here](https://t.me/sahyog_setu_bot) to Opt-In!"
+            f"Click [here](https://t.me/SahyogSyncBot) to Opt-In!"
         )
         await telegram_service.broadcast_photo(volunteer_chats, "", msg)
 
