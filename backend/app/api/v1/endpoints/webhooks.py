@@ -292,7 +292,7 @@ async def telegram_webhook(
             return {"status": "registered"}
 
         if text == "/start":
-            welcome_text = "🤝 *WELCOME TO SAHYOG SETU*\n\nWe connect extra food to people who need it. How can we help you today? 🌍"
+            welcome_text = "🤝 *WELCOME TO SAHYOGSYNC*\n\nWe connect extra food to people who need it. How can we help you today? 🌍"
             inline_kb = {"inline_keyboard": [[{"text": "🙋 Join Volunteer", "callback_data": "join_volunteer"}, {"text": "🎁 Donate Food", "callback_data": "donate_surplus"}]]}
             
             # --- Fail-Safe Experience ---

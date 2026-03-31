@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Sahyog Setu API",
+    title="SahyogSync API",
     description="Smart allocation operating system for NGO logistics",
     lifespan=lifespan
 )
@@ -84,7 +84,7 @@ async def root():
     return {
         "status": "healthy", 
         "version": "2.0.0", 
-        "message": "Welcome to Sahyog Setu API V2.0 (Dual-Engine)",
+        "message": "Welcome to SahyogSync", 
         "docs_url": "/docs"
     }
 
