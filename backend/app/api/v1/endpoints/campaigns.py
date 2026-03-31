@@ -119,24 +119,33 @@ async def create_campaign(
     
     await db.flush() # Get ID for broadcast
 
-    # 2. Sequential Broadcast to Internal Volunteers
-    vol_stmt = select(Volunteer.telegram_chat_id).where(
+    # 2. Sequential Broadcast to Internal Volunteers with Dynamic Links
+    vol_stmt = select(Volunteer.id, Volunteer.telegram_chat_id).where(
         Volunteer.org_id == current_user.org_id,
         Volunteer.telegram_active == True
     )
-    volunteer_chats = (await db.execute(vol_stmt)).scalars().all()
+    volunteer_targets = (await db.execute(vol_stmt)).all()
     
-    if volunteer_chats:
-        msg = (
-            f"🚀 *NEW MISSION ALERT* 🚀\n\n"
-            f"📍 *Campaign:* {new_campaign.name}\n"
-            f"🕒 *Timeline:* {new_campaign.start_time.strftime('%H:%M') if new_campaign.start_time else 'TBD'} "
-            f"to {new_campaign.end_time.strftime('%H:%M') if new_campaign.end_time else 'TBD'}\n"
-            f"💼 *Skills Needed:* {', '.join(new_campaign.required_skills) if new_campaign.required_skills else 'General Help'}\n"
-            f"📍 *Location:* {new_campaign.location_address or 'See instructions'}\n\n"
-            f"Click [here](https://t.me/SahyogSyncBot) to Opt-In!"
-        )
-        await telegram_service.broadcast_photo(volunteer_chats, "", msg)
+    base_url = "https://sahyog-setu-frontend.vercel.app/missions"
+    
+    if volunteer_targets:
+        org_name = current_user.organization.name if current_user.organization else "SahyogSync"
+        for vol_id, chat_id in volunteer_targets:
+            msg = (
+                f"🌟 *MISSION INVITATION* 🌟\n\n"
+                f"Greeting Hero! {org_name} has just launched a new mission and we would love your support. "
+                f"Your contribution makes a real difference! 🙏\n\n"
+                f"📋 *Mission Brief:* {new_campaign.name}\n"
+                f"⏳ *Timeline:* {new_campaign.start_time.strftime('%b %d, %H:%M') if new_campaign.start_time else 'TBD'}\n"
+                f"🛠 *Role/Skills:* {', '.join(new_campaign.required_skills) if new_campaign.required_skills else 'Mission Supporter'}\n"
+                f"📍 *Location:* {new_campaign.location_address or 'Check instructions in link'}\n\n"
+                f"✨ *Are you ready to join us?*\n"
+                f"Review the full briefing and confirm your participation here:\n"
+                f"👉 [Review & Accept Mission]({base_url}/{new_campaign.id}?vol_id={vol_id})\n\n"
+                f"Together, let's serve! 🌏✨"
+            )
+            # Use individual send_message for personalization
+            await telegram_service.send_message(chat_id, msg)
 
     await db.commit()
     await db.refresh(new_campaign)
@@ -145,16 +154,17 @@ async def create_campaign(
 @router.post("/{campaign_id}/opt-in")
 async def volunteer_opt_in(
     campaign_id: int,
-    volunteer_id: int, # Usually from Telegram Auth or Session
+    vol_id: int, # From URL parameter in the new web flow
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Volunteer joins the FCFS pool for a mission. Status set to PENDING.
+    Volunteer joins the pool for a mission via the Web Interface.
+    Status remains PENDING for final NGO approval.
     """
     # 1. Check if already joined
     stmt = select(CampaignParticipation).where(
         CampaignParticipation.campaign_id == campaign_id,
-        CampaignParticipation.volunteer_id == volunteer_id
+        CampaignParticipation.volunteer_id == vol_id
     )
     existing = (await db.execute(stmt)).scalar_one_or_none()
     if existing:
@@ -163,12 +173,42 @@ async def volunteer_opt_in(
     # 2. Add to pool
     participation = CampaignParticipation(
         campaign_id=campaign_id,
-        volunteer_id=volunteer_id,
+        volunteer_id=vol_id,
         status=CampaignParticipationStatus.PENDING
     )
     db.add(participation)
     await db.commit()
-    return {"status": "success", "message": "You are in the queue for approval!"}
+    return {"status": "success", "message": "You have expressed interest! Awaiting NGO confirmation."}
+
+@router.post("/{campaign_id}/reject")
+async def volunteer_reject(
+    campaign_id: int,
+    vol_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Volunteer declines the mission via the Web Interface.
+    Status set to REJECTED.
+    """
+    stmt = select(CampaignParticipation).where(
+        CampaignParticipation.campaign_id == campaign_id,
+        CampaignParticipation.volunteer_id == vol_id
+    )
+    existing = (await db.execute(stmt)).scalar_one_or_none()
+    
+    if existing:
+        existing.status = CampaignParticipationStatus.REJECTED
+    else:
+        # Create a record if it doesn't exist (initial rejection)
+        participation = CampaignParticipation(
+            campaign_id=campaign_id,
+            volunteer_id=vol_id,
+            status=CampaignParticipationStatus.REJECTED
+        )
+        db.add(participation)
+        
+    await db.commit()
+    return {"status": "success", "message": "Mission declined."}
 
 @router.get("/{campaign_id}/pool", response_model=List[ParticipantResponse])
 async def list_potential_volunteers(
