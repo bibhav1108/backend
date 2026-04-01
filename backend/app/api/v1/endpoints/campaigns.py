@@ -200,19 +200,6 @@ async def create_campaign(
     
     return new_campaign
 
-@router.get("/{campaign_id}", response_model=CampaignResponse)
-async def get_campaign(
-    campaign_id: int,
-    db: AsyncSession = Depends(get_db)
-):
-    stmt = select(Campaign).where(Campaign.id == campaign_id)
-    campaign = (await db.execute(stmt)).scalar_one_or_none()
-
-    if not campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-
-    return campaign
-    
 @router.post("/{campaign_id}/opt-in")
 async def volunteer_opt_in(
     campaign_id: int,
@@ -300,29 +287,44 @@ async def list_potential_volunteers(
     current_user: User = Depends(get_current_user)
 ):
     """
-    List all volunteers in the PENDING pool for this campaign.
-    Includes skills for Admin visibility.
+    List ALL volunteers for this campaign.
+    Keeps approved/rejected visible instead of disappearing.
     """
+
     stmt = (
         select(CampaignParticipation, Volunteer.name, Volunteer.skills)
         .join(Volunteer, CampaignParticipation.volunteer_id == Volunteer.id)
         .where(
-            CampaignParticipation.campaign_id == campaign_id,
-            CampaignParticipation.status == CampaignParticipationStatus.PENDING
+            CampaignParticipation.campaign_id == campaign_id
         )
     )
+
     result = await db.execute(stmt)
-    
+
     participants = []
     for row in result:
         part, name, skills = row
-        participants.append(ParticipantResponse(
-            volunteer_id=part.volunteer_id,
-            volunteer_name=name,
-            skills=skills,
-            status=part.status,
-            joined_at=part.joined_at
-        ))
+        participants.append(
+            ParticipantResponse(
+                volunteer_id=part.volunteer_id,
+                volunteer_name=name,
+                skills=skills,
+                status=part.status,
+                joined_at=part.joined_at
+            )
+        )
+
+    # sort: pending → approved → rejected
+    priority = {
+        CampaignParticipationStatus.PENDING: 0,
+        CampaignParticipationStatus.APPROVED: 1,
+        CampaignParticipationStatus.REJECTED: 2,
+    }
+
+    participants.sort(
+        key=lambda p: (priority.get(p.status, 99), p.joined_at)
+    )
+
     return participants
 
 @router.post("/{campaign_id}/approve-volunteer/{vol_id}")
@@ -346,7 +348,7 @@ async def approve_volunteer(
     )
     approved_count = (await db.execute(approved_count_stmt)).scalar() or 0
     
-    if approved_count >= campaign.volunteers_required:
+    if campaign.volunteers_required > 0 and approved_count >= campaign.volunteers_required:
         raise HTTPException(status_code=400, detail="Campaign volunteer quota already reached!")
 
     # 2. Update Status
@@ -357,6 +359,12 @@ async def approve_volunteer(
     participation = (await db.execute(stmt)).scalar_one_or_none()
     if not participation:
         raise HTTPException(status_code=404, detail="Participation record not found")
+    
+    if participation.status == CampaignParticipationStatus.APPROVED:
+        return {"status": "already_approved"}
+
+    if participation.status == CampaignParticipationStatus.REJECTED:
+        raise HTTPException(status_code=400, detail="Cannot approve a rejected volunteer")
     
     participation.status = CampaignParticipationStatus.APPROVED
     
@@ -468,3 +476,16 @@ async def list_campaigns(
     stmt = select(Campaign).where(Campaign.org_id == current_user.org_id)
     result = await db.execute(stmt)
     return result.scalars().all()
+
+@router.get("/{campaign_id}", response_model=CampaignResponse)
+async def get_campaign(
+    campaign_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Campaign).where(Campaign.id == campaign_id)
+    campaign = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    return campaign
