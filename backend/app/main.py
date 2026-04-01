@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config import settings
 
 from contextlib import asynccontextmanager
+from sqlalchemy import text
 from backend.app.database import engine, Base
 from backend.app.api.v1.endpoints.webhooks import router as webhooks_router
 from backend.app.api.v1.endpoints.volunteers import router as volunteers_router
@@ -25,29 +26,22 @@ from backend.app.api.v1.endpoints.campaigns import router as campaigns_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables on startup (For development/MVP setup)
+    # Lightweight startup
     try:
-        from sqlalchemy import text
-        async with engine.begin() as conn:
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis;"))
-            await conn.run_sync(Base.metadata.create_all)
-        
-        # Add missing columns (Incremental migration)
-        from backend.app.database import run_migrations
-        await run_migrations()
-        # Sync Telegram Bot Commands (Public Default)
-        from backend.app.services.telegram_service import telegram_service
+        # 1. Database Connectivity Check (Non-blocking search)
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        print("[Lifespan] Database connection verified.")
+
+        # 2. Sync Telegram Bot Commands (Quick API call)
         await telegram_service.set_bot_commands()
-        
-        print("[Lifespan] Database tables created/verified successfully.")
+        print("[Lifespan] Telegram service configured.")
     except Exception as e:
-        print(f"[Lifespan WARNING] Database connection or creation failed: {e}")
-        print("[Lifespan WARNING] Continuing boot for endpoint route verification purposes.")
+        print(f"[Lifespan WARNING] Non-critical startup task failed: {e}")
     
     yield
     
     # Graceful Shutdown
-    from backend.app.services.telegram_service import telegram_service
     await telegram_service.close()
     print("[Lifespan] Telegram service client closed.")
 
