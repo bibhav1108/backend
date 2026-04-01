@@ -5,7 +5,8 @@ from backend.app.database import get_db
 from backend.app.config import settings
 from backend.app.models import (
     NGO_Campaign as Campaign, CampaignStatus, Organization, Inventory, 
-    Volunteer, MissionTeam as CampaignParticipation, CampaignParticipationStatus, User
+    Volunteer, MissionTeam as CampaignParticipation, CampaignParticipationStatus, User,
+    AuditTrail
 )
 from backend.app.api.deps import get_current_user
 from backend.app.services.telegram_service import telegram_service
@@ -118,6 +119,16 @@ async def create_campaign(
             inv_item.reserved_quantity += requested_qty
     
     await db.flush() # Get ID for broadcast
+
+    # Log Audit Event
+    audit = AuditTrail(
+        org_id=current_user.org_id,
+        actor_id=current_user.id,
+        event_type="MISSION_LAUNCHED",
+        target_id=str(new_campaign.id),
+        notes=f"Mission '{new_campaign.name}' launched with items: {new_campaign.items}"
+    )
+    db.add(audit)
 
     # 2. Sequential Broadcast to Internal Volunteers with Dynamic Links
     vol_stmt = select(Volunteer.id, Volunteer.telegram_chat_id).where(
@@ -332,6 +343,16 @@ async def complete_campaign(
         )
     )
     approved_volunteers = (await db.execute(vols_stmt)).scalars().all()
+
+    # 3. Log Audit Event
+    audit = AuditTrail(
+        org_id=campaign.org_id,
+        actor_id=current_user.id,
+        event_type="MISSION_COMPLETED",
+        target_id=str(campaign.id),
+        notes=f"Mission '{campaign.name}' completed. Volunteers: {len(approved_volunteers)}, Items: {campaign.items}"
+    )
+    db.add(audit)
                 
     await db.commit()
     return {

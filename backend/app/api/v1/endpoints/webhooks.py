@@ -205,15 +205,9 @@ async def telegram_webhook(
                 elif dispatch:
                     print(f"[TRACE] Acceptance Refused: Dispatch already in status {dispatch.status}")
 
-            # Campaign Flow: Join Pool
+            # Campaign Flow: Legacy Join Pool (Redirect to Web)
             if data_payload.startswith("join_mission_") and volunteer:
-                campaign_id = int(data_payload.split("_")[2])
-                stmt_check = select(MissionTeam).where(MissionTeam.campaign_id == campaign_id, MissionTeam.volunteer_id == volunteer.id)
-                existing = (await db.execute(stmt_check)).scalar_one_or_none()
-                if not existing:
-                    db.add(MissionTeam(campaign_id=campaign_id, volunteer_id=volunteer.id, status=CampaignParticipationStatus.PENDING))
-                    await db.commit()
-                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *Request Received!* The NGO team is reviewing your profile. Stay tuned! 🕒")
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="🚀 *New Mission Flow!*\n\nWe have upgraded our mission briefing experience. Please use the *dynamic link* sent in the latest broadcast to join your team. See you there!")
             
             # --- Added Flows: Join & Donate ---
             if data_payload == "donate_surplus":
