@@ -208,6 +208,11 @@ async def get_campaign(
     stmt = select(Campaign).where(Campaign.id == campaign_id)
     campaign = (await db.execute(stmt)).scalar_one_or_none()
 
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    return campaign
+    
 @router.post("/{campaign_id}/opt-in")
 async def volunteer_opt_in(
     campaign_id: int,
@@ -463,8 +468,3 @@ async def list_campaigns(
     stmt = select(Campaign).where(Campaign.org_id == current_user.org_id)
     result = await db.execute(stmt)
     return result.scalars().all()
-
-    if not campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-
-    return campaign
