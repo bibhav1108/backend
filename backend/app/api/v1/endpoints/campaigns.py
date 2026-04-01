@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
-from backend.app.database import get_db
+from sqlalchemy.orm import selectinload
+from backend.app.database import get_db, async_session
 from backend.app.config import settings
 from backend.app.models import (
     NGO_Campaign as Campaign, CampaignStatus, Organization, Inventory, 
@@ -61,11 +62,64 @@ class ParticipantResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# --- Background Tasks ---
+
+async def background_mission_broadcast(campaign_id: int, org_id: int, org_name: str):
+    """
+    Asynchronous background task to broadcast mission invitations to volunteers.
+    Ensures the main API request returns immediately while Telegram messages
+    are sent sequentially in the background.
+    """
+    print(f"[TRACE] Starting Background Broadcast for Mission: {campaign_id}")
+    async with async_session() as db:
+        try:
+            # 1. Fetch the mission details
+            stmt_c = select(Campaign).where(Campaign.id == campaign_id)
+            campaign = (await db.execute(stmt_c)).scalar_one_or_none()
+            if not campaign:
+                print(f"[ERROR] Mission {campaign_id} not found for broadcast.")
+                return
+
+            # 2. Fetch all active volunteers for this NGO
+            vol_stmt = select(Volunteer.id, Volunteer.telegram_chat_id).where(
+                Volunteer.org_id == org_id,
+                Volunteer.telegram_active == True
+            )
+            volunteer_targets = (await db.execute(vol_stmt)).all()
+            
+            if not volunteer_targets:
+                print(f"[TRACE] No volunteers found to notify for Mission {campaign_id}")
+                return
+
+            # 3. Construct Message
+            base_url = "https://sahyog-setu-frontend.vercel.app/missions"
+            
+            for vol_id, chat_id in volunteer_targets:
+                msg = (
+                    f"🌟 *MISSION INVITATION* 🌟\n\n"
+                    f"Greeting Hero! {org_name} has just launched a new mission and we would love your support. "
+                    f"Your contribution makes a real difference! 🙏\n\n"
+                    f"📋 *Mission Brief:* {campaign.name}\n"
+                    f"⏳ *Timeline:* {campaign.start_time.strftime('%b %d, %H:%M') if campaign.start_time else 'TBD'}\n"
+                    f"🛠 *Role/Skills:* {', '.join(campaign.required_skills) if campaign.required_skills else 'Mission Supporter'}\n"
+                    f"📍 *Location:* {campaign.location_address or 'Check instructions in link'}\n\n"
+                    f"✨ *Are you ready to join us?*\n"
+                    f"Review the full briefing and confirm your participation here:\n"
+                    f"👉 [Review & Accept Mission]({base_url}/{campaign.id}?vol_id={vol_id})\n\n"
+                    f"Together, let's serve! 🌏✨"
+                )
+                await telegram_service.send_message(chat_id, msg)
+            
+            print(f"[TRACE] Successfully broadcasted Mission {campaign_id} to {len(volunteer_targets)} volunteers.")
+        except Exception as e:
+            print(f"[ERROR] Background Broadcast Failed: {e}")
+
 # --- Endpoints ---
 
 @router.post("/", response_model=CampaignResponse)
 async def create_campaign(
     campaign_in: CampaignCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -118,9 +172,7 @@ async def create_campaign(
             # If all checks pass, reserve the stock
             inv_item.reserved_quantity += requested_qty
     
-    await db.flush() # Get ID for broadcast
-
-    # Log Audit Event
+    # 2. Log Audit Event
     audit = AuditTrail(
         org_id=current_user.org_id,
         actor_id=current_user.id,
@@ -130,36 +182,13 @@ async def create_campaign(
     )
     db.add(audit)
 
-    # 2. Sequential Broadcast to Internal Volunteers with Dynamic Links
-    vol_stmt = select(Volunteer.id, Volunteer.telegram_chat_id).where(
-        Volunteer.org_id == current_user.org_id,
-        Volunteer.telegram_active == True
-    )
-    volunteer_targets = (await db.execute(vol_stmt)).all()
-    
-    base_url = "https://sahyog-setu-frontend.vercel.app/missions"
-    
-    if volunteer_targets:
-        org_name = current_user.organization.name if current_user.organization else "SahyogSync"
-        for vol_id, chat_id in volunteer_targets:
-            msg = (
-                f"🌟 *MISSION INVITATION* 🌟\n\n"
-                f"Greeting Hero! {org_name} has just launched a new mission and we would love your support. "
-                f"Your contribution makes a real difference! 🙏\n\n"
-                f"📋 *Mission Brief:* {new_campaign.name}\n"
-                f"⏳ *Timeline:* {new_campaign.start_time.strftime('%b %d, %H:%M') if new_campaign.start_time else 'TBD'}\n"
-                f"🛠 *Role/Skills:* {', '.join(new_campaign.required_skills) if new_campaign.required_skills else 'Mission Supporter'}\n"
-                f"📍 *Location:* {new_campaign.location_address or 'Check instructions in link'}\n\n"
-                f"✨ *Are you ready to join us?*\n"
-                f"Review the full briefing and confirm your participation here:\n"
-                f"👉 [Review & Accept Mission]({base_url}/{new_campaign.id}?vol_id={vol_id})\n\n"
-                f"Together, let's serve! 🌏✨"
-            )
-            # Use individual send_message for personalization
-            await telegram_service.send_message(chat_id, msg)
-
     await db.commit()
     await db.refresh(new_campaign)
+
+    # 2. Trigger Background Broadcast
+    org_name = current_user.organization.name if current_user.organization else "SahyogSync"
+    background_tasks.add_task(background_mission_broadcast, new_campaign.id, current_user.org_id, org_name)
+    
     return new_campaign
 
 @router.post("/{campaign_id}/opt-in")
@@ -188,6 +217,27 @@ async def volunteer_opt_in(
         status=CampaignParticipationStatus.PENDING
     )
     db.add(participation)
+    
+    # 3. Notify Volunteer via Telegram
+    vol_stmt = select(Volunteer).where(Volunteer.id == vol_id)
+    volunteer = (await db.execute(vol_stmt)).scalar_one_or_none()
+    
+    campaign_stmt = (
+        select(Campaign)
+        .options(selectinload(Campaign.organization))
+        .where(Campaign.id == campaign_id)
+    )
+    campaign = (await db.execute(campaign_stmt)).scalar_one_or_none()
+
+    if volunteer and volunteer.telegram_chat_id and campaign:
+        org_name = campaign.organization.name if campaign.organization else "SahyogSync"
+        msg = (
+            f"🙌 *Thank you for your readiness!*\n\n"
+            f"We have received your interest for the mission: *{campaign.name}*.\n\n"
+            f"We will notify you once you are *approved* by {org_name}. Stay tuned! 🚀"
+        )
+        await telegram_service.send_message(volunteer.telegram_chat_id, msg)
+
     await db.commit()
     return {"status": "success", "message": "You have expressed interest! Awaiting NGO confirmation."}
 

@@ -23,7 +23,7 @@ from typing import List, Optional
 
 class MarketplaceDispatchCreate(BaseModel):
     marketplace_need_id: int
-    volunteer_id: int
+    volunteer_ids: List[int]
 
 class VerifyOTPRequest(BaseModel):
     dispatch_id: int
@@ -57,8 +57,8 @@ async def create_marketplace_dispatch(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Coordinator manually selects a volunteer for a Marketplace Need.
-    Speed Layer: 1-to-1 reactive mission.
+    Coordinator selects one or more volunteers for a Marketplace Need.
+    Enables FCFS (First-Come, First-Served) logic.
     """
     # 1. Verify MarketplaceNeed exists and belongs to NGO
     need_stmt = select(MarketplaceNeed).where(
@@ -69,57 +69,62 @@ async def create_marketplace_dispatch(
     if not need:
         raise HTTPException(status_code=404, detail="Marketplace need not found in your organization")
 
-    # 2. Verify Volunteer exists and belongs to NGO
+    # 2. Verify Volunteers exist and belong to NGO
     vol_stmt = select(Volunteer).where(
-        Volunteer.id == data.volunteer_id,
+        Volunteer.id.in_(data.volunteer_ids),
         Volunteer.org_id == current_user.org_id
     )
-    volunteer = (await db.execute(vol_stmt)).scalar_one_or_none()
-    if not volunteer:
-        raise HTTPException(status_code=404, detail="Volunteer not found in your organization")
+    volunteers = (await db.execute(vol_stmt)).scalars().all()
     
-    if not volunteer.telegram_active or not volunteer.telegram_chat_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Volunteer must activate Telegram bot first."
+    if len(volunteers) != len(data.volunteer_ids):
+        raise HTTPException(status_code=404, detail="One or more volunteers not found in your organization")
+    
+    # 3. Create Dispatches and Notify
+    created_dispatches = []
+    for volunteer in volunteers:
+        if not volunteer.telegram_active or not volunteer.telegram_chat_id:
+            continue # Skip inactive volunteers for now, or could raise error
+            
+        dispatch = MarketplaceDispatch(
+            marketplace_need_id=data.marketplace_need_id,
+            volunteer_id=volunteer.id,
+            status=DispatchStatus.SENT
         )
+        db.add(dispatch)
+        created_dispatches.append(dispatch)
+    
+    if not created_dispatches:
+        raise HTTPException(status_code=400, detail="No active volunteers selected for dispatch.")
 
-    # 3. Create MarketplaceDispatch
-    dispatch = MarketplaceDispatch(
-        marketplace_need_id=data.marketplace_need_id,
-        volunteer_id=data.volunteer_id,
-        status=DispatchStatus.SENT
-    )
-    db.add(dispatch)
+    # Mark need as DISPATCHED (waiting for someone to accept)
     need.status = NeedStatus.DISPATCHED
-
+    
     await db.commit()
-    await db.refresh(dispatch)
-
-    # 4. Fire Telegram Notification
+    
+    # 4. Fire Telegram Notifications
     body = (
         f"🚨 *New Donation Pickup ALERT*\n\n"
-        f"Hero, you have been assigned to collect a donor's contribution:\n"
+        f"Hero, you have been invited to collect a donor's contribution:\n"
         f"📦 *Type*: {need.type.name}\n"
         f"🔢 *Qty*: {need.quantity}\n"
         f"📍 *Pickup*: {need.pickup_address}\n\n"
-        "Please head to the location to save this resource! Thank you for your service. 🤝"
+        "⚡ *ACT FAST*: This mission is available on a first-come, first-served basis. Tap accept now to claim it! 🤝"
     )
     
-    keyboard = {
-        "inline_keyboard": [[
-            {"text": "✅ Accept Mission", "callback_data": f"accept_{dispatch.id}"},
-            {"text": "❌ Decline", "callback_data": f"decline_{dispatch.id}"}
-        ]]
-    }
-    
-    await telegram_service.send_message(
-        chat_id=volunteer.telegram_chat_id,
-        text=body,
-        reply_markup=keyboard
-    )
+    for dispatch in created_dispatches:
+        keyboard = {
+            "inline_keyboard": [[
+                {"text": "✅ Accept Mission", "callback_data": f"accept_{dispatch.id}"},
+                {"text": "❌ Decline", "callback_data": f"decline_{dispatch.id}"}
+            ]]
+        }
+        await telegram_service.send_message(
+            chat_id=next(v.telegram_chat_id for v in volunteers if v.id == dispatch.volunteer_id),
+            text=body,
+            reply_markup=keyboard
+        )
 
-    return {"message": "Marketplace dispatch created", "dispatch_id": dispatch.id}
+    return {"message": f"Marketplace dispatch sent to {len(created_dispatches)} volunteers", "dispatch_ids": [d.id for d in created_dispatches]}
 
 @router.post("/verify-otp", response_model=dict)
 async def verify_marketplace_otp(

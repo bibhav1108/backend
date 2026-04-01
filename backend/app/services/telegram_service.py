@@ -181,6 +181,7 @@ class TelegramService:
         
         public_commands = [
             {"command": "start", "description": "🚀 Start helping"},
+            {"command": "menu", "description": "📋 Open Main Menu"},
             {"command": "donate", "description": "🎁 Donate extra food"},
             {"command": "about", "description": "ℹ️ About SahyogSync"},
             {"command": "help", "description": "🆘 Get assistance"},
@@ -189,9 +190,11 @@ class TelegramService:
         
         volunteer_commands = [
             {"command": "start", "description": "🚀 Start helping"},
+            {"command": "menu", "description": "📋 Open Main Menu"},
             {"command": "leaderboard", "description": "🏆 Top volunteers"},
-            {"command": "my_missions", "description": "👤 My missions & stats"},
-            {"command": "cancel", "description": "⚠️ Cancel active mission"},
+            {"command": "my_missions", "description": "👤 My donation pickups"},
+            {"command": "my_campaigns", "description": "🎭 My mass missions"},
+            {"command": "cancel", "description": "⚠️ Cancel active pickup"},
             {"command": "donate", "description": "🎁 Donate extra food"},
             {"command": "about", "description": "ℹ️ About SahyogSync"},
             {"command": "help", "description": "🆘 Get assistance"}

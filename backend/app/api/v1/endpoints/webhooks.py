@@ -187,23 +187,81 @@ async def telegram_webhook(
                     await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Error*: You must be a registered volunteer to accept missions.")
                     return {"status": "unregistered"}
 
-                stmt = select(MarketplaceDispatch).where(MarketplaceDispatch.id == dispatch_id, MarketplaceDispatch.volunteer_id == volunteer.id)
+                # 1. Fetch dispatch with relation to check mission status
+                stmt = select(MarketplaceDispatch).where(
+                    MarketplaceDispatch.id == dispatch_id
+                ).options(selectinload(MarketplaceDispatch.marketplace_need))
                 dispatch = (await db.execute(stmt)).scalar_one_or_none()
                 
-                print(f"[TRACE] Dispatch Record Found: {dispatch is not None}")
-                if dispatch and dispatch.status == DispatchStatus.SENT:
+                if not dispatch:
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Error*: Mission record not found.")
+                    return {"status": "error"}
+
+                # 2. FCFS CHECK: Is the mission already taken?
+                # A mission is taken if: 
+                # - The Need status is COMPLETED
+                # - Another Dispatch for the same Need is already ACCEPTED
+                stmt_check = select(MarketplaceDispatch).where(
+                    MarketplaceDispatch.marketplace_need_id == dispatch.marketplace_need_id,
+                    MarketplaceDispatch.status == DispatchStatus.ACCEPTED
+                )
+                any_accepted = (await db.execute(stmt_check)).scalar_one_or_none()
+
+                if any_accepted or dispatch.marketplace_need.status == NeedStatus.COMPLETED:
+                    print(f"[TRACE] FCFS Conflict: Mission {dispatch.marketplace_need_id} already claimed.")
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, 
+                        text="🏃‍♂️ *Mission Already Taken!*\n\nHero, you were just a second too late! Another volunteer has already claimed this pickup. Thank you for your readiness! 🦸‍♂️"
+                    )
+                    return {"status": "already_taken"}
+
+                # 3. Success: Claim the mission
+                if dispatch.status == DispatchStatus.SENT:
                     dispatch.status = DispatchStatus.ACCEPTED
                     raw_code, hashed, expires_at = generate_otp_pair()
                     dispatch.otp_hash = hashed
                     dispatch.otp_expires_at = expires_at
+                    
+                    # Ensure Need status is DISPATCHED
+                    dispatch.marketplace_need.status = NeedStatus.DISPATCHED
+                    
                     await db.commit()
                     
-                    print(f"[TRACE] Dispatch Status Updated to ACCEPTED. OTP Generated.")
+                    print(f"[TRACE] FCFS Success: {chat_id} claimed mission {dispatch_id}")
                     await send_and_log(bg=background_tasks, chat_id=chat_id,
                         text=f"🎫 *Mission Accepted!*\n\nYour Pickup CODE is: `{raw_code}`\n\nShow this code to the donor upon collection. Thank you for your service! 🤝"
                     )
-                elif dispatch:
+
+                    # --- Notify Donor ---
+                    try:
+                        # Fetch donor chat_id via Alert
+                        stmt_alert = select(MarketplaceAlert.chat_id).join(MarketplaceNeed).where(MarketplaceNeed.id == dispatch.marketplace_need_id)
+                        donor_chat_id = (await db.execute(stmt_alert)).scalar()
+
+                        if donor_chat_id:
+                            donor_msg = (
+                                f"🌟 *Wonderful News!* \n\n"
+                                f"Our dedicated volunteer, *{volunteer.name}*, is on their way to collect your generous donation! 🤝 \n\n"
+                                f"Once they arrive, they will share a *6-digit Pickup CODE* with you. Please click the button below to verify the collection."
+                            )
+                            donor_kb = {
+                                "inline_keyboard": [[
+                                    {"text": "✅ Confirm OTP", "callback_data": f"prompt_otp_{dispatch_id}"}
+                                ]]
+                            }
+                            await telegram_service.send_message(chat_id=donor_chat_id, text=donor_msg, reply_markup=donor_kb)
+                    except Exception as e:
+                        print(f"[ERROR] Failed to notify donor: {e}")
+                else:
                     print(f"[TRACE] Acceptance Refused: Dispatch already in status {dispatch.status}")
+
+            if data_payload.startswith("decline_"):
+                dispatch_id = int(data_payload.split("_")[1])
+                stmt = select(MarketplaceDispatch).where(MarketplaceDispatch.id == dispatch_id)
+                dispatch = (await db.execute(stmt)).scalar_one_or_none()
+                if dispatch and dispatch.status == DispatchStatus.SENT:
+                    dispatch.status = DispatchStatus.FAILED # Or add REJECTED status
+                    await db.commit()
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="🙏 *No problem!* We've updated the mission status. Thank you for letting us know! ✨")
 
             # Campaign Flow: Legacy Join Pool (Redirect to Web)
             if data_payload.startswith("join_mission_") and volunteer:
@@ -259,6 +317,11 @@ async def telegram_webhook(
                     alert.message_body = "[Pending Report]"
                     await db.commit()
                     await send_and_log(bg=background_tasks, chat_id=chat_id, text="🔄 *No problem!* Just send me the corrected details (Item, Qty, Location) and I'll re-analyze them.")
+
+            # --- Donor Prompt Handler ---
+            if data_payload.startswith("prompt_otp_"):
+                prompt_msg = "✍️ *Action Required*: Please type the 6-digit code shown by the volunteer now to complete the mission! 🤝"
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text=prompt_msg)
             
             return {"status": "callback_handled"}
 
@@ -301,7 +364,7 @@ async def telegram_webhook(
             await send_and_log(bg=background_tasks, chat_id=chat_id, text=f"🎉 *Welcome {name}!* Your registration is complete. You will now receive mission alerts for your area! 🚀")
             return {"status": "registered"}
 
-        if text == "/start":
+        if text == "/start" or text == "/menu":
             welcome_text = "🤝 *WELCOME TO SAHYOGSYNC*\n\nWe connect extra food to people who need it. How can we help you today? 🌍"
             inline_kb = {"inline_keyboard": [[{"text": "🙋 Join Volunteer", "callback_data": "join_volunteer"}, {"text": "🎁 Donate Food", "callback_data": "donate_surplus"}]]}
             
@@ -312,8 +375,184 @@ async def telegram_webhook(
             # If photo fails (e.g. file missing or API error), fallback to text-only
             if not msg_id:
                 await send_and_log(bg=background_tasks, chat_id=chat_id, text=welcome_text, reply_markup=inline_kb)
-                
             return {"status": "start_sent"}
+
+        if text == "/donate":
+            # Create a placeholder alert to capture the next message
+            alert = MarketplaceAlert(chat_id=chat_id, message_body="[Pending Report]")
+            db.add(alert)
+            await db.commit()
+            
+            format_msg = (
+                "🎁 *Tell us about the food!*\n\n"
+                "Please send us the details like this:\n"
+                "`[Item Name] [Quantity] [Location]`\n\n"
+                "Example: `10kg Dal and Rice at Sector 62, Noida` ✨"
+            )
+            await send_and_log(bg=background_tasks, chat_id=chat_id, text=format_msg)
+            return {"status": "donate_started"}
+
+        if text == "/help":
+            help_msg = (
+                "🤖 **SahyogSync Help Center**\n\n"
+                "---\n\n"
+                "📜 **Commands & Usage**\n\n"
+                "/start → Start the bot & Main Menu\n"
+                "/help → Open help section\n"
+                "/tutorial → View step-by-step guide\n"
+                "/donate → Contribute resources\n\n"
+                "👤 **Volunteer Task List**\n"
+                "/my_missions → Donation Pickups (Speed Layer)\n"
+                "/my_campaigns → Mass Missions (NGO Initiatives)\n"
+                "/cancel → Cancel active pickup\n\n"
+                "/about → Learn about SahyogSync\n\n"
+                "---\n\n"
+                "📞 **Customer Support**\n\n"
+                "For any issues or assistance:\n\n"
+                "📧 Email: [i.e.ishantiwari@gmail.com](mailto:i.e.ishantiwari@gmail.com)\n"
+                "📱 Telegram: @Ishantiwariii\n"
+                "🕒 Response Time: Within 24 hours\n\n"
+                "---\n\n"
+                "Thank you for using SahyogSync."
+            )
+            await send_and_log(bg=background_tasks, chat_id=chat_id, text=help_msg)
+            return {"status": "help_sent"}
+
+        if text == "/tutorial":
+            tutorial_msg = (
+                "📘 **SahyogSync Tutorial**\n\n"
+                "Follow these simple steps to get started:\n\n"
+                "---\n\n"
+                "1️⃣ **Start the Bot**\n"
+                "Use /start to begin and open the main menu.\n\n"
+                "2️⃣ **Select Your Role**\n"
+                "Choose whether you are a Volunteer or a Donor.\n\n"
+                "3️⃣ **Choose an Action**\n"
+                "• Donate extra food resources\n"
+                "• Join as a Volunteer for missions\n\n"
+                "4️⃣ **Provide Details**\n"
+                "Enter required information like item details and your location.\n\n"
+                "5️⃣ **Submit & Track**\n"
+                "Submit your report and use `/my_missions` for pickups or `/my_campaigns` for mass missions.\n\n"
+                "---\n\n"
+                "💡 Tip: Use the menu buttons for faster and easier navigation.\n\n"
+                "---\n\n"
+                "You're all set to use SahyogSync 🚀"
+            )
+            await send_and_log(bg=background_tasks, chat_id=chat_id, text=tutorial_msg)
+            return {"status": "tutorial_sent"}
+
+        if text == "/about":
+            about_msg = (
+                "ℹ️ **About SahyogSync**\n\n"
+                "SahyogSync is a smart platform designed to connect NGOs, volunteers, and donors for efficient resource allocation and support.\n\n"
+                "Our goal is to ensure that the right help reaches the right place at the right time by streamlining requests, managing resources, and enabling real-time coordination.\n\n"
+                "Key Features:\n"
+                "• Request and track assistance\n"
+                "• Volunteer task management\n"
+                "• Donation and resource coordination\n"
+                "• Real-time updates and transparency\n\n"
+                "---\n\n"
+                "“Powering the Right Help, at the Right Time.”"
+            )
+            await send_and_log(bg=background_tasks, chat_id=chat_id, text=about_msg)
+            return {"status": "about_sent"}
+
+        if text == "/my_missions":
+            # Identify volunteer
+            stmt_v = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
+            volunteer = (await db.execute(stmt_v)).scalar_one_or_none()
+            
+            if not volunteer:
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Not Registered*: Use /start to join as a volunteer first!")
+                return {"status": "unregistered"}
+
+            # Fetch active dispatches
+            stmt_m = (
+                select(MarketplaceDispatch)
+                .join(MarketplaceNeed, MarketplaceDispatch.marketplace_need_id == MarketplaceNeed.id)
+                .where(MarketplaceDispatch.volunteer_id == volunteer.id, MarketplaceDispatch.status == DispatchStatus.ACCEPTED)
+            )
+            active = (await db.execute(stmt_m)).scalars().all()
+            
+            if not active:
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="🌟 *No Active Missions*: You're all caught up! Use /menu to find how you can help.")
+            else:
+                missions_text = "👤 *Your Active Missions*:\n\n"
+                for i, d in enumerate(active, 1):
+                    # For listing, we'd need more details (pre-fetch via selectinload if needed)
+                    missions_text += f"{i}. Protocol READY for pickup at *{d.marketplace_need.pickup_address}*.\n"
+                missions_text += "\nShow your 6-digit code to the donor upon arrival!"
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text=missions_text)
+            return {"status": "missions_sent"}
+
+        if text == "/my_campaigns":
+            # Identify volunteer
+            stmt_v = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
+            volunteer = (await db.execute(stmt_v)).scalar_one_or_none()
+            
+            if not volunteer:
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Not Registered*: Join as a volunteer first to see your campaigns.")
+                return {"status": "unregistered"}
+
+            # Fetch joined campaigns (Pending/Approved/Rejected)
+            stmt_c = (
+                select(MissionTeam)
+                .options(selectinload(MissionTeam.campaign))
+                .where(MissionTeam.volunteer_id == volunteer.id)
+                .order_by(MissionTeam.joined_at.desc())
+            )
+            participations = (await db.execute(stmt_c)).scalars().all()
+            
+            if not participations:
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="ℹ️ *No Campaigns*: You haven't joined any mass missions yet. Watch for broadcasts! 📢")
+            else:
+                campaign_msg = "🎭 *Your Mass Missions (Campaigns)*\n\n"
+                base_url = "https://sahyog-setu-frontend.vercel.app/missions"
+                for p in participations:
+                    status_icon = "✅" if p.status == CampaignParticipationStatus.APPROVED else "⏳"
+                    if p.status == CampaignParticipationStatus.REJECTED: status_icon = "❌"
+                    
+                    campaign_msg += f"{status_icon} *{p.campaign.name}*\n"
+                    campaign_msg += f"Status: {p.status.value}\n"
+                    campaign_msg += f"🔗 [Review Briefing]({base_url}/{p.campaign_id}?vol_id={volunteer.id})\n\n"
+                
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text=campaign_msg)
+            return {"status": "campaigns_sent"}
+
+        if text == "/cancel":
+            # Identify volunteer
+            stmt_v = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
+            volunteer = (await db.execute(stmt_v)).scalar_one_or_none()
+            
+            if not volunteer:
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Error*: You are not a registered volunteer.")
+                return {"status": "unregistered"}
+
+            # Fetch most recent active dispatch
+            stmt_m = (
+                select(MarketplaceDispatch)
+                .join(MarketplaceNeed, MarketplaceDispatch.marketplace_need_id == MarketplaceNeed.id)
+                .where(MarketplaceDispatch.volunteer_id == volunteer.id, MarketplaceDispatch.status == DispatchStatus.ACCEPTED)
+                .order_by(MarketplaceDispatch.created_at.desc())
+                .limit(1)
+            )
+            active = (await db.execute(stmt_m)).scalar_one_or_none()
+            
+            if not active:
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="ℹ️ *No active missions to cancel.*")
+            else:
+                # Cancel the mission
+                active.status = DispatchStatus.FAILED
+                
+                # Re-open the need
+                stmt_n = select(MarketplaceNeed).where(MarketplaceNeed.id == active.marketplace_need_id)
+                need = (await db.execute(stmt_n)).scalar_one()
+                need.status = NeedStatus.OPEN
+                
+                await db.commit()
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Mission Cancelled.* The request has been returned to the open pool. We hope you can join us again soon! 🤝")
+            return {"status": "mission_cancelled"}
             
 
         # --- 3. Handle OTP Verification (Donor-Side Completion) ---
