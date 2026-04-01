@@ -75,6 +75,7 @@ app.include_router(meta_router, prefix="/api/v1", tags=["metadata"])
 app.include_router(webhooks_router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(volunteers_router, prefix="/api/v1/volunteers", tags=["volunteers"])
 app.include_router(marketplace_router, prefix="/api/v1/marketplace/needs", tags=["marketplace"])
+app.include_router(marketplace_router, prefix="/api/v1/needs", tags=["marketplace-legacy"]) # Compatibility
 app.include_router(m_dispatches_router, prefix="/api/v1/marketplace/dispatches", tags=["marketplace"])
 app.include_router(inventory_router, prefix="/api/v1/inventory", tags=["inventory"])
 app.include_router(campaigns_router, prefix="/api/v1/campaigns", tags=["campaigns"])

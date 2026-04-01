@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from backend.app.database import get_db
 from backend.app.config import settings
 from backend.app.models import User
@@ -31,7 +31,7 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
         
-    stmt = select(User).where(User.email == email)
+    stmt = select(User).where(User.email == email).options(selectinload(User.organization))
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
     
@@ -51,7 +51,7 @@ async def get_current_user_optional(
         if email is None:
             return None
         
-        stmt = select(User).where(User.email == email)
+        stmt = select(User).where(User.email == email).options(selectinload(User.organization))
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
     except JWTError:
