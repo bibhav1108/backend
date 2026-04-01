@@ -20,7 +20,8 @@ from backend.app.models import (
     NGO_Campaign,
     MissionTeam,
     CampaignParticipationStatus,
-    CampaignStatus
+    CampaignStatus,
+    MarketplaceInventory
 )
 from backend.app.services.otp import generate_otp_pair, verify_otp
 from backend.app.services.telegram_service import telegram_service
@@ -321,7 +322,72 @@ async def telegram_webhook(
             return {"status": "start_sent"}
             
 
-        # Surplus Reporting (The AI Ingestion Flow)
+        # --- 3. Handle OTP Verification (Donor-Side Completion) ---
+        if text and text.isdigit() and len(text) == 6:
+            # Check if this user has an active donor mission
+            stmt_otp = (
+                select(MarketplaceDispatch)
+                .join(MarketplaceNeed, MarketplaceDispatch.marketplace_need_id == MarketplaceNeed.id)
+                .join(MarketplaceAlert, MarketplaceNeed.marketplace_alert_id == MarketplaceAlert.id)
+                .where(
+                    MarketplaceAlert.chat_id == chat_id,
+                    MarketplaceDispatch.status.in_([DispatchStatus.SENT, DispatchStatus.ACCEPTED])
+                )
+            )
+            dispatch = (await db.execute(stmt_otp)).scalar_one_or_none()
+            
+            if dispatch:
+                print(f"[TRACE] OTP Detected from Donor. Dispatch ID: {dispatch.id}")
+                if verify_otp(text, dispatch.otp_hash):
+                    # SUCCESS: Complete the Mission
+                    dispatch.status = DispatchStatus.COMPLETED
+                    dispatch.otp_used = True
+                    
+                    # Update related need
+                    stmt_need = select(MarketplaceNeed).where(MarketplaceNeed.id == dispatch.marketplace_need_id).options(selectinload(MarketplaceNeed.marketplace_alert))
+                    need = (await db.execute(stmt_need)).scalar_one()
+                    need.status = NeedStatus.COMPLETED
+                    
+                    # Recovered Item to Inventory
+                    recovery_entry = MarketplaceInventory(
+                        org_id=need.org_id,
+                        item_name=f"Recovered {need.type.name}",
+                        quantity=1.0, # Placeholder
+                        unit=need.quantity,
+                        collected_at=datetime.utcnow()
+                    )
+                    db.add(recovery_entry)
+                    
+                    # Update Volunteer Stats
+                    stmt_stats = select(VolunteerStats).where(VolunteerStats.volunteer_id == dispatch.volunteer_id)
+                    stats = (await db.execute(stmt_stats)).scalar_one_or_none()
+                    if stats: stats.completions += 1
+                    
+                    await db.commit()
+                    print(f"[TRACE] Mission {dispatch.id} COMPLETED via Donor OTP.")
+                    
+                    # Feedback to Donor
+                    impact_msg = (
+                        "🎊 *IMPACT RECORDED!* 🎊\n\n"
+                        "Thank you so much! Your contribution has been safely collected and logged. "
+                        "Because of you, we are one step closer to a hunger-free world. 🌍🤝"
+                    )
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text=impact_msg)
+                    
+                    # Feedback to Volunteer
+                    stmt_vol = select(Volunteer).where(Volunteer.id == dispatch.volunteer_id)
+                    volunteer = (await db.execute(stmt_vol)).scalar_one()
+                    if volunteer.telegram_chat_id:
+                        await telegram_service.send_message(
+                            chat_id=volunteer.telegram_chat_id,
+                            text="✅ *Mission Complete!* The donor has verified your pickup. Great job, Hero! 🌟"
+                        )
+                    return {"status": "otp_verified"}
+                else:
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Invalid Code.* Please check the 6-digit code shown by the volunteer.")
+                    return {"status": "otp_invalid"}
+
+        # --- 4. Surplus Reporting (The AI Ingestion Flow) ---
         if text and not text.startswith("/"):
             # Check for role/context first - limit(1) to prevent MultipleResultsFound error
             stmt = (
