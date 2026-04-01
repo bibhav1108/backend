@@ -455,3 +455,16 @@ async def list_campaigns(
     stmt = select(Campaign).where(Campaign.org_id == current_user.org_id)
     result = await db.execute(stmt)
     return result.scalars().all()
+
+@router.get("/{campaign_id}", response_model=CampaignResponse)
+async def get_campaign(
+    campaign_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    stmt = select(Campaign).where(Campaign.id == campaign_id)
+    campaign = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    return campaign
