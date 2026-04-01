@@ -90,5 +90,48 @@ sequenceDiagram
 
 ---
 
-## 🔵 Version 2.1 - 3.0: Intelligence & Scale
-*Strategic Allocation, DPDPA Security, and City Scale Crisis Autopilot.*
+## 🔵 Version 2.1: Strategic Resource Allocation (Optimization)
+*Goal: Intelligent matching using PostGIS spatial queries and ML ranking.*
+
+### 🗺️ Operational Flow (Smart Matching Lifecycle)
+```mermaid
+sequenceDiagram
+    actor Donor
+    actor Telegram/WhatsApp
+    actor Gemini
+    actor NGO_Admin
+    actor Backend
+    actor Volunteer_Team
+
+    Donor->>Telegram/WhatsApp: 📱 Msg: "Surplus Food at 12 MG Road..." (Chat)
+    Gemini->>Backend: 🧠 Real-time Parsing + Confidence Scoring
+    Backend->>Backend: 📍 PostGIS: Find nearest NGOs (<5km)
+    Backend->>NGO_Admin: 🚨 Priority Alert (Marketplace)
+    
+    NGO_Admin->>Backend: 🖱️ Claim & Auto-Suggest Volunteers
+    Backend->>Backend: ⚡ Ranking: [Proximity + Trust Tier + Past Completions]
+    
+    Backend->>Volunteer_Team: 🚀 Targeted Dispatch
+```
+
+---
+
+## 🔵 Version 2.5: Security & Fatigue (The Bridge)
+*Goal: Ensuring volunteer safety and data privacy.*
+
+- **Fatigue Scoring**: Monitors volunteer workload to prevent burnout (Score = Hours + Mission count).
+- **Security Gate**: Implements AES-256 encryption at rest for sensitive donor/volunteer PII (Phone numbers, precise locations).
+- **Compliance Checks**: Automated verification of NGO status before allowing mission broadcasts.
+
+---
+
+## 🔵 Version 3.0: Intelligence & Scale (Crisis Autopilot)
+*Goal: Autonomous resource allocation and city-scale crisis management.*
+
+| Subpart | Component | Details |
+| :--- | :--- | :--- |
+| **Recovery Engine** | Crisis Autopilot | Automated FCFS dispatch for perishables during high-alert zones. |
+| **AI Operations Advisor** | Pattern Analyzer | Monthly analytical nodes reviewing zone coverage gaps. |
+| **DPDPA Compliance** | PII Purge | Automated 24h cleanup of ephemeral chat logs and precise coordinates. |
+| **Governance** | Admin Gateway | High-level orchestration for city-wide resource distribution. |
+| **Optimization** | Spatial Clustering | Real-time map of surplus hotspots for strategic planning. |
