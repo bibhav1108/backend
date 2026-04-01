@@ -146,6 +146,28 @@ class TelegramService:
         except Exception:
             return None
 
+    async def answer_callback_query(self, callback_query_id: str, text: Optional[str] = None, show_alert: bool = False) -> bool:
+        """
+        Acknowledge a callback query from an inline button. 
+        Crucial to stop the "loading" spinner in the Telegram UI.
+        """
+        if not self.api_url:
+            return True
+            
+        url = f"{self.api_url}/answerCallbackQuery"
+        payload = {"callback_query_id": callback_query_id}
+        if text:
+            payload["text"] = text
+            payload["show_alert"] = show_alert
+            
+        client = self._get_client()
+        try:
+            response = await client.post(url, json=payload)
+            return response.status_code == 200
+        except Exception as e:
+            logger.error(f"[Telegram ERROR] answerCallbackQuery Exception: {e}")
+            return False
+
     async def set_bot_commands(self, chat_id: Optional[str] = None) -> bool:
         """
         Register bot commands. 

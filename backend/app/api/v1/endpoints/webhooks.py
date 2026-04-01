@@ -166,18 +166,30 @@ async def telegram_webhook(
         # --- 1. Handle Callbacks (Inline Buttons) ---
         if "callback_query" in data:
             callback = data["callback_query"]
+            callback_query_id = callback["id"]
             chat_id = str(callback["message"]["chat"]["id"])
             data_payload = callback.get("data", "")
             
+            # 1.1 Acknowledge all callbacks immediately to stop button "spinning"
+            await telegram_service.answer_callback_query(callback_query_id)
+            print(f"[TRACE] Callback Received: {data_payload} from Chat: {chat_id}")
+
             stmt = select(Volunteer).where(Volunteer.telegram_chat_id == chat_id)
             volunteer = (await db.execute(stmt)).scalar_one_or_none()
             
             # Marketplace Flow
-            if data_payload.startswith("accept_") and volunteer:
+            if data_payload.startswith("accept_"):
                 dispatch_id = int(data_payload.split("_")[1])
+                print(f"[TRACE] Volunteer Attempting Acceptance. Dispatch: {dispatch_id} | Vol Found: {volunteer is not None}")
+                
+                if not volunteer:
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Error*: You must be a registered volunteer to accept missions.")
+                    return {"status": "unregistered"}
+
                 stmt = select(MarketplaceDispatch).where(MarketplaceDispatch.id == dispatch_id, MarketplaceDispatch.volunteer_id == volunteer.id)
                 dispatch = (await db.execute(stmt)).scalar_one_or_none()
                 
+                print(f"[TRACE] Dispatch Record Found: {dispatch is not None}")
                 if dispatch and dispatch.status == DispatchStatus.SENT:
                     dispatch.status = DispatchStatus.ACCEPTED
                     raw_code, hashed, expires_at = generate_otp_pair()
@@ -185,9 +197,12 @@ async def telegram_webhook(
                     dispatch.otp_expires_at = expires_at
                     await db.commit()
                     
+                    print(f"[TRACE] Dispatch Status Updated to ACCEPTED. OTP Generated.")
                     await send_and_log(bg=background_tasks, chat_id=chat_id,
                         text=f"🎫 *Mission Accepted!*\n\nYour Pickup CODE is: `{raw_code}`\n\nShow this code to the donor upon collection. Thank you for your service! 🤝"
                     )
+                elif dispatch:
+                    print(f"[TRACE] Acceptance Refused: Dispatch already in status {dispatch.status}")
 
             # Campaign Flow: Join Pool
             if data_payload.startswith("join_mission_") and volunteer:
