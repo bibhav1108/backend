@@ -91,26 +91,35 @@ async def background_mission_broadcast(campaign_id: int, org_id: int, org_name: 
                 print(f"[TRACE] No volunteers found to notify for Mission {campaign_id}")
                 return
 
-            # 3. Construct Message
-            base_url = "https://sahyog-setu-frontend.vercel.app/missions"
+            # 3. Construct Message (Web Link Integration)
+            base_url = f"{settings.FRONTEND_URL}/missions"
             
+            # --- Escaping dynamic fields for Telegram Markdown Safety ---
+            esc_name = telegram_service.escape_markdown(campaign.name)
+            esc_org = telegram_service.escape_markdown(org_name)
+            esc_loc = telegram_service.escape_markdown(campaign.location_address or "Check instructions in link")
+            esc_skills = telegram_service.escape_markdown(", ".join(campaign.required_skills) if campaign.required_skills else "Mission Supporter")
+            timeline = campaign.start_time.strftime('%b %d, %H:%M') if campaign.start_time else 'TBD'
+            
+            success_count = 0
             for vol_id, chat_id in volunteer_targets:
                 msg = (
                     f"🌟 *MISSION INVITATION* 🌟\n\n"
-                    f"Greeting Hero! {org_name} has just launched a new mission and we would love your support. "
+                    f"Greeting Hero! {esc_org} has just launched a new mission and we would love your support. "
                     f"Your contribution makes a real difference! 🙏\n\n"
-                    f"📋 *Mission Brief:* {campaign.name}\n"
-                    f"⏳ *Timeline:* {campaign.start_time.strftime('%b %d, %H:%M') if campaign.start_time else 'TBD'}\n"
-                    f"🛠 *Role/Skills:* {', '.join(campaign.required_skills) if campaign.required_skills else 'Mission Supporter'}\n"
-                    f"📍 *Location:* {campaign.location_address or 'Check instructions in link'}\n\n"
+                    f"📋 *Mission Brief:* {esc_name}\n"
+                    f"⏳ *Timeline:* {timeline}\n"
+                    f"🛠 *Role/Skills:* {esc_skills}\n"
+                    f"📍 *Location:* {esc_loc}\n\n"
                     f"✨ *Are you ready to join us?*\n"
                     f"Review the full briefing and confirm your participation here:\n"
                     f"👉 [Review & Accept Mission]({base_url}/{campaign.id}?vol_id={vol_id})\n\n"
                     f"Together, let's serve! 🌏✨"
                 )
-                await telegram_service.send_message(chat_id, msg)
+                res = await telegram_service.send_message(chat_id, msg)
+                if res: success_count += 1
             
-            print(f"[TRACE] Successfully broadcasted Mission {campaign_id} to {len(volunteer_targets)} volunteers.")
+            print(f"[TRACE] Broadcast Complete for Mission {campaign_id}. Success: {success_count}/{len(volunteer_targets)}")
         except Exception as e:
             print(f"[ERROR] Background Broadcast Failed: {e}")
 
@@ -415,6 +424,28 @@ async def complete_campaign(
             "completion_time": datetime.utcnow()
         }
     }
+
+@router.post("/{campaign_id}/broadcast")
+async def trigger_manual_broadcast(
+    campaign_id: int,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Manually re-trigger the broadcast for a specific campaign.
+    Useful for notifying newly verified volunteers or retrying failures.
+    """
+    stmt = select(Campaign).where(Campaign.id == campaign_id, Campaign.org_id == current_user.org_id)
+    campaign = (await db.execute(stmt)).scalar_one_or_none()
+    
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    org_name = current_user.organization.name if current_user.organization else "SahyogSync"
+    background_tasks.add_task(background_mission_broadcast, campaign.id, current_user.org_id, org_name)
+    
+    return {"status": "success", "message": f"Broadcast triggered for {campaign.name}"}
 
 @router.get("/", response_model=List[CampaignResponse])
 async def list_campaigns(

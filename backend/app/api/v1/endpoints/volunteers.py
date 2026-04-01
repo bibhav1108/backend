@@ -46,10 +46,10 @@ async def list_volunteers(
     List volunteers registered to the current NGO.
     Includes completions and no-show stats.
     """
-    # Join with Stats to get the counters
+    # Join with Stats to get the counters (LEFT JOIN to ensure visibility even if stats missing)
     stmt = (
         select(Volunteer, VolunteerStats.completions, VolunteerStats.no_shows)
-        .join(VolunteerStats, Volunteer.id == VolunteerStats.volunteer_id)
+        .outerjoin(VolunteerStats, Volunteer.id == VolunteerStats.volunteer_id)
         .where(Volunteer.org_id == current_user.org_id)
     )
     
@@ -63,8 +63,8 @@ async def list_volunteers(
         v, comp, noshow = row
         # Map to Response model manually because of the join
         resp = VolunteerResponse.model_validate(v)
-        resp.completions = comp
-        resp.no_shows = noshow
+        resp.completions = comp or 0
+        resp.no_shows = noshow or 0
         vols.append(resp)
         
     return vols

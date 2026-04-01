@@ -13,6 +13,22 @@ class TelegramService:
         self.api_url = f"https://api.telegram.org/bot{self.token}" if self.token else None
         self._client: Optional[httpx.AsyncClient] = None
 
+    @staticmethod
+    def escape_markdown(text: str) -> str:
+        """
+        Escapes special characters for Telegram Markdown (V1).
+        Particularly important for addresses and names with underscores.
+        """
+        if not text:
+            return ""
+        # Characters to escape in Markdown V1: _, *, [, `
+        # Note: We don't escape everything to keep it readable, 
+        # but these 4 are the most common cause of 400 Bad Request.
+        escape_chars = r'_*[`'
+        for char in escape_chars:
+            text = text.replace(char, f"\\{char}")
+        return text
+
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(timeout=10.0)
@@ -49,10 +65,12 @@ class TelegramService:
                 data = response.json()
                 msg_id = data.get("result", {}).get("message_id")
                 return msg_id
-            logger.error(f"[Telegram ERROR] Failed: {response.text}")
+            
+            # Detailed error logging for debugging (especially 400 Bad Request)
+            logger.error(f"[Telegram ERROR] {response.status_code} - {response.text} | Payload: {json.dumps(payload)}")
             return None
         except Exception as e:
-            logger.error(f"[Telegram ERROR] Exception: {e}")
+            logger.error(f"[Telegram ERROR] Exception: {e} | To: {chat_id}")
             return None
 
     async def send_photo(self, chat_id: str, photo_path: str, caption: str = "", reply_markup: Optional[dict] = None) -> Optional[int]:

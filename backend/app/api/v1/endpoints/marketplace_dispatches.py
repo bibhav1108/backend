@@ -102,15 +102,21 @@ async def create_marketplace_dispatch(
     await db.commit()
     
     # 4. Fire Telegram Notifications
+    # --- Escaping dynamic fields for Telegram Markdown Safety ---
+    esc_type = telegram_service.escape_markdown(need.type.name)
+    esc_qty = telegram_service.escape_markdown(need.quantity)
+    esc_addr = telegram_service.escape_markdown(need.pickup_address)
+
     body = (
         f"🚨 *New Donation Pickup ALERT*\n\n"
         f"Hero, you have been invited to collect a donor's contribution:\n"
-        f"📦 *Type*: {need.type.name}\n"
-        f"🔢 *Qty*: {need.quantity}\n"
-        f"📍 *Pickup*: {need.pickup_address}\n\n"
+        f"📦 *Type*: {esc_type}\n"
+        f"🔢 *Qty*: {esc_qty}\n"
+        f"📍 *Pickup*: {esc_addr}\n\n"
         "⚡ *ACT FAST*: This mission is available on a first-come, first-served basis. Tap accept now to claim it! 🤝"
     )
     
+    success_count = 0
     for dispatch in created_dispatches:
         keyboard = {
             "inline_keyboard": [[
@@ -118,11 +124,18 @@ async def create_marketplace_dispatch(
                 {"text": "❌ Decline", "callback_data": f"decline_{dispatch.id}"}
             ]]
         }
-        await telegram_service.send_message(
-            chat_id=next(v.telegram_chat_id for v in volunteers if v.id == dispatch.volunteer_id),
-            text=body,
-            reply_markup=keyboard
-        )
+        # Find the volunteer's chat ID from the already-fetched list
+        vol_chat_id = next((v.telegram_chat_id for v in volunteers if v.id == dispatch.volunteer_id), None)
+        
+        if vol_chat_id:
+            res = await telegram_service.send_message(
+                chat_id=vol_chat_id,
+                text=body,
+                reply_markup=keyboard
+            )
+            if res: success_count += 1
+    
+    print(f"[TRACE] Marketplace Dispatch Loop Complete. Success: {success_count}/{len(created_dispatches)}")
 
     return {"message": f"Marketplace dispatch sent to {len(created_dispatches)} volunteers", "dispatch_ids": [d.id for d in created_dispatches]}
 

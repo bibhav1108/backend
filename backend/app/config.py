@@ -20,8 +20,9 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_USERNAME: str = "SahyogSyncBot"
     GEMINI_API_KEY: Optional[str] = None
     
-    # CORS Settings
+    # CORS & Web Linking
     ALLOWED_ORIGINS: Union[List[str], str] = ["https://sahyog-setu-frontend.vercel.app", "http://localhost:3000"]
+    FRONTEND_URL: str = "https://sahyog-setu-frontend.vercel.app"
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod

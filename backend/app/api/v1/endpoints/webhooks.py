@@ -35,6 +35,19 @@ WELCOME_PHOTO_PATH = os.path.join(STATIC_DIR, "welcome.png")
 
 # --- Helper Functions ---
 
+def normalize_phone(phone: str) -> str:
+    """
+    Standardizes phone numbers for matching.
+    Removes +, 91, 0, and any non-digit characters. 
+    Returns the last 10 digits for Indian numbers.
+    """
+    if not phone: return ""
+    digits = "".join(filter(str.isdigit, phone))
+    # If it's a typical Indian number with country code (91XXXXXXXXXX), take last 10
+    if len(digits) >= 10:
+        return digits[-10:]
+    return digits
+
 async def log_telegram_message(chat_id: str, message_id: int):
     """
     Save message ID to DB for 24h cleanup.
@@ -333,36 +346,41 @@ async def telegram_webhook(
         text = message.get("text", "").strip()
         contact = message.get("contact")
 
-        # --- Handle Shared Contact (Registration) ---
+        # --- Handle Shared Contact (Strict Verification) ---
         if contact:
-            phone = contact.get("phone_number")
-            name = f"{contact.get('first_name', '')} {contact.get('last_name', '')}".strip() or "Volunteer"
+            raw_phone = contact.get("phone_number")
+            norm_phone = normalize_phone(raw_phone)
             
-            # Use first organization as default for now
-            stmt_org = select(Organization).limit(1)
-            org = (await db.execute(stmt_org)).scalar_one_or_none()
-            org_id = org.id if org else 1
+            print(f"[TRACE] Verifying Contact: {raw_phone} -> Normalized: {norm_phone}")
 
-            # Check if user exists by phone
-            stmt_check = select(Volunteer).where(Volunteer.phone_number == phone)
+            # 1. Dashboard-First Check: Look for a match among pre-registered volunteers
+            # We check if preserved phone number ends with the normalized digits
+            stmt_check = select(Volunteer).where(Volunteer.phone_number.like(f"%{norm_phone}"))
             v = (await db.execute(stmt_check)).scalar_one_or_none()
             
             if v:
+                # MATCH FOUND: Activate the dashboard record
                 v.telegram_chat_id = chat_id
                 v.telegram_active = True
+                
+                # OPTIONAL: Initialize stats if missing (safety check)
+                stmt_stats = select(VolunteerStats).where(VolunteerStats.volunteer_id == v.id)
+                stats_exist = (await db.execute(stmt_stats)).scalar_one_or_none()
+                if not stats_exist:
+                    db.add(VolunteerStats(volunteer_id=v.id))
+
+                await db.commit()
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text=f"🎉 *Verification Successful!*\n\nWelcome back, *{v.name}*. You are now authorized to receive mission alerts for your NGO! 🚀")
+                return {"status": "verified"}
             else:
-                v = Volunteer(
-                    org_id=org_id,
-                    name=name,
-                    phone_number=phone,
-                    telegram_chat_id=chat_id,
-                    telegram_active=True
+                # NO MATCH: Reject as per user logic
+                reject_msg = (
+                    "⚠️ *Access Denied*\n\n"
+                    f"The number `{raw_phone}` is not registered in our NGO dashboard.\n\n"
+                    "Please contact your NGO Coordinator to get your number added first. Thank you! 🙏"
                 )
-                db.add(v)
-            
-            await db.commit()
-            await send_and_log(bg=background_tasks, chat_id=chat_id, text=f"🎉 *Welcome {name}!* Your registration is complete. You will now receive mission alerts for your area! 🚀")
-            return {"status": "registered"}
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text=reject_msg)
+                return {"status": "rejected"}
 
         if text == "/start" or text == "/menu":
             welcome_text = "🤝 *WELCOME TO SAHYOGSYNC*\n\nWe connect extra food to people who need it. How can we help you today? 🌍"
