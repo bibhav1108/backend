@@ -98,3 +98,35 @@ async def update_inventory_item(
     await db.commit()
     await db.refresh(item)
     return item
+
+
+@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_inventory_item(
+    item_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete an inventory item by ID.
+    
+    Returns 404 if the item does not exist or does not belong to the current NGO.
+    Returns 409 if the item has a reserved quantity (currently tied to an active dispatch/campaign).
+    """
+    stmt = select(Inventory).where(
+        Inventory.id == item_id,
+        Inventory.org_id == current_user.org_id
+    )
+    result = await db.execute(stmt)
+    item = result.scalar_one_or_none()
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+
+    if item.reserved_quantity > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot delete '{item.item_name}': it has {item.reserved_quantity} units currently reserved. "
+                   "Release the reservation before deleting."
+        )
+
+    await db.delete(item)
+    await db.commit()
