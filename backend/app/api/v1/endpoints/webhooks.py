@@ -87,27 +87,45 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int):
             parsed = await ai_service.parse_surplus_text(text)
             print(f"[TRACE] Gemini Response Received: {parsed is not None} | Type: {type(parsed)}")
             
-            # --- Normalize AI Output (Handle Lists from Gemini) ---
+            # --- Normalize AI Output (Handle Nested Lists or Direct Lists) ---
+            if isinstance(parsed, dict):
+                # Check for common nested keys from Gemini
+                for key in ["donations", "items", "reports"]:
+                    if key in parsed and isinstance(parsed[key], list):
+                        parsed = parsed[key]
+                        break
+
             if isinstance(parsed, list) and len(parsed) > 0:
                 print(f"[TRACE] Multiple items detected. Consolidating list.")
-                # Combine multiple items into a single summary for display
                 all_items = []
                 all_qties = []
+                locs = []
+                notes = []
                 for p in parsed:
                     if isinstance(p, dict):
-                        # Use get() for safety
-                        all_items.append(str(p.get("item", "N/A")))
-                        all_qties.append(str(p.get("quantity", "N/A")))
+                        # Extract and cleaning N/A values
+                        item = p.get("item", "N/A")
+                        qty = p.get("quantity", "N/A")
+                        loc = p.get("location", "N/A")
+                        note = p.get("notes", "N/A")
+                        
+                        if item != "N/A": all_items.append(str(item))
+                        if qty != "N/A": all_qties.append(str(qty))
+                        if loc != "N/A": locs.append(str(loc))
+                        if note != "N/A": notes.append(str(note))
                 
-                # Take the first item as base (for location/notes) and override item/qty fields
-                consolidated = parsed[0].copy() if isinstance(parsed[0], dict) else {}
-                consolidated["item"] = ", ".join(all_items)
-                consolidated["quantity"] = ", ".join(all_qties)
-                parsed = consolidated
+                # Consolidate into a single flat dict for the bot card
+                # Using dict.fromkeys to keep unique values while maintaining order
+                parsed = {
+                    "item": ", ".join(dict.fromkeys(all_items)) or "Donation Item",
+                    "quantity": ", ".join(all_qties) or "N/A",
+                    "location": ", ".join(dict.fromkeys(locs)) or "N/A",
+                    "notes": "; ".join(dict.fromkeys(notes)) or "N/A"
+                }
             
-            # Safety check to prevent AttributeError
+            # Final safety check to prevent downstream AttributeError
             if not isinstance(parsed, dict):
-                print(f"[TRACE] Final response is not a dictionary. Discarding.")
+                print(f"[TRACE] Final normalized response is not a dictionary. Discarding.")
                 parsed = None
 
             # --- Filtering Logic: Ignore empty/garbage reports ---
