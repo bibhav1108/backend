@@ -151,8 +151,9 @@ sequenceDiagram
 | **Deduplication** | `InboundMessage` | Prevents Telegram retries from exhausting Gemini quotas. |
 | **Data Recovery** | Structured Storage | Saves item/qty/location in distinct DB columns for auditing. |
 | **Impact Tracker** | `MarketplaceInventory` | Auto-logs recovery history + NGO impact stats. |
-| **Draft Engine** | Campaign Architect | Proactive mission planning from natural language prompts. |
+| **Draft Engine** | LangChain Architect | **NGO Assistant Persona**: Generates professional mission drafts (Timeline/Resources) from simple coordinator prompts. |
 | **V2 Guard** | 45-min OTP Expiry | Ensures mission integrity during high-speed pickups. |
+| **Modular Core** | `backend/app/agents/` | Scalable package for domain-specific AI intelligence. |
 
 ---
 

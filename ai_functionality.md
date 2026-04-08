@@ -29,10 +29,21 @@ This document outlines the core AI functionalities implemented to stabilize the 
 - **Address Mapping**: `Alert.location` (AI) -> `MarketplaceNeed.pickup_address` (Core).
 - **Description Mapping**: `Alert.item` (AI) -> `MarketplaceNeed.description` (Core).
 
-## 5. Model Configuration
-- **Standard**: `gemini-2.5-flash` (Optimized for JSON extraction).
-- **Format**: Enforced JSON-only response schema via System Instructions.
+## 6. Modular AI Agent Architecture (LangChain Powered)
+**Problem**: As the system grows, putting all AI logic into a single file makes it unmaintainable and hard to test.
+**Solution**: Created a dedicated `backend/app/agents/` package.
+- **LangChain Integration**: Standardized on LangChain LCEL for building specialized mission agents.
+- **Campaign Architect Agent**: 
+    - **Persona**: NGO Mission Expert Assistant.
+    - **Logic**: Automatically architectures a professional mission plan from a simple coordinator prompt.
+    - **Output Mapping**: Maps natural language to `CampaignCreate` fields (Timeline, Resources, Skills, etc.).
+- **Hybrid Workflow**: Introduced the `/draft` API endpoint which allows coordinators to get AI-suggested form values, review them on the dashboard, and then manually confirm/edit before launch.
+
+## 7. Model & Framework Standards
+- **Standard Model**: `gemini-2.5-flash` (Optimized for JSON extraction).
+- **Core Framework**: LangChain (for prompt engineering and structured output parsing).
+- **Versioning**: Version 2.1.0 "AI Supervision".
 
 ---
-*Document Version: 1.1.0*
-*Last Updated: 2026-04-08*
+*Document Version: 1.2.0*
+*Last Updated: 2026-04-09*
