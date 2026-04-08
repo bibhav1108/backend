@@ -128,7 +128,11 @@ async def run_migrations():
                 END $$;
             """))
 
-        # Marketplace Alert Extensions
+        # Marketplace Alert Extensions (Support V2.1 AI Structured Parser)
+        await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS item VARCHAR;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS quantity VARCHAR;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS location VARCHAR;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS notes TEXT;"))
         await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS is_confirmed BOOLEAN DEFAULT FALSE;"))
         await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS is_processed BOOLEAN DEFAULT FALSE;"))
 
@@ -187,11 +191,14 @@ async def run_migrations():
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS skills JSON;"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS location geometry(POINT, 4326);"))
 
-        # Ensure Campaign Columns
+        # Ensure Campaign Columns (Support V2.1 AI Architect and Detailed Mission Specs)
         await conn.execute(text("ALTER TABLE IF EXISTS ngo_campaigns ADD COLUMN IF NOT EXISTS type campaigntype DEFAULT 'OTHER';"))
+        await conn.execute(text("ALTER TABLE IF EXISTS ngo_campaigns ADD COLUMN IF NOT EXISTS target_quantity VARCHAR;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS ngo_campaigns ADD COLUMN IF NOT EXISTS items JSON;"))
         await conn.execute(text("ALTER TABLE IF EXISTS ngo_campaigns ADD COLUMN IF NOT EXISTS start_time TIMESTAMP;"))
         await conn.execute(text("ALTER TABLE IF EXISTS ngo_campaigns ADD COLUMN IF NOT EXISTS end_time TIMESTAMP;"))
         await conn.execute(text("ALTER TABLE IF EXISTS ngo_campaigns ADD COLUMN IF NOT EXISTS volunteers_required INTEGER DEFAULT 0;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS ngo_campaigns ADD COLUMN IF NOT EXISTS required_skills JSON;"))
         await conn.execute(text("ALTER TABLE IF EXISTS ngo_campaigns ADD COLUMN IF NOT EXISTS location_address VARCHAR;"))
 
         # Final Cleanup: Remove references that cross-wire Marketplace and Campaign
