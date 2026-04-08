@@ -50,6 +50,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="SahyogSync API",
     description="Smart allocation operating system for NGO logistics",
+    version="2.1.0",
     lifespan=lifespan
 )
 
@@ -80,11 +81,11 @@ app.include_router(m_inventory_router, prefix="/api/v1/marketplace/inventory", t
 async def root():
     return {
         "status": "healthy", 
-        "version": "2.0.0", 
+        "version": "2.1.0", 
         "message": "Welcome to SahyogSync", 
         "docs_url": "/docs"
     }
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "version": "2.0.0"}
+    return {"status": "healthy", "version": "2.1.0"}
