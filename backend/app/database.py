@@ -144,6 +144,42 @@ async def run_migrations():
             );
         """))
 
+        # Create Telegram Cleanup Log Table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS telegram_messages (
+                id SERIAL PRIMARY KEY,
+                chat_id VARCHAR NOT NULL,
+                message_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS ix_telegram_messages_chat_id ON telegram_messages (chat_id);
+        """))
+
+        # Create Inbound Message Deduplication Table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS inbound_messages (
+                id SERIAL PRIMARY KEY,
+                chat_id VARCHAR NOT NULL,
+                message_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT _chat_message_uc UNIQUE (chat_id, message_id)
+            );
+            CREATE INDEX IF NOT EXISTS ix_inbound_messages_chat_id ON inbound_messages (chat_id);
+        """))
+
+        # Create Audit Trail Table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS audit_events (
+                id SERIAL PRIMARY KEY,
+                org_id INTEGER REFERENCES organizations(id),
+                actor_id INTEGER,
+                event_type VARCHAR NOT NULL,
+                target_id VARCHAR,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """))
+
         # Ensure Column Consistency for Volunteers (V1.5+)
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS telegram_chat_id VARCHAR;"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS telegram_active BOOLEAN DEFAULT FALSE;"))

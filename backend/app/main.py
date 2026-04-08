@@ -11,7 +11,7 @@ from backend.app.config import settings
 
 from contextlib import asynccontextmanager
 from sqlalchemy import text
-from backend.app.database import engine, Base
+from backend.app.database import engine, Base, run_migrations
 from backend.app.api.v1.endpoints.webhooks import router as webhooks_router
 from backend.app.api.v1.endpoints.volunteers import router as volunteers_router
 from backend.app.api.v1.endpoints.marketplace import router as marketplace_router
@@ -34,7 +34,11 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("SELECT 1"))
         print("[Lifespan] Database connection verified.")
 
-        # 2. Sync Telegram Bot Commands (Quick API call)
+        # 2. Sync Database Schema (Manual Migration Path)
+        await run_migrations()
+        print("[Lifespan] Database schema synchronized.")
+
+        # 3. Sync Telegram Bot Commands (Quick API call)
         await telegram_service.set_bot_commands()
         print("[Lifespan] Telegram service configured.")
     except Exception as e:
