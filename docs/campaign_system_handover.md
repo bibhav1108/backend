@@ -16,12 +16,30 @@ Unlike the Marketplace (which is FCFS), Campaigns follow a **Strict Governance F
 
 ---
 
-## ⚙️ The 6-Step Action Lifecycle (UI Flow)
+## ⚙️ The 6-Step Action Lifecycle (Version 2.1: AI Supervision)
 
-### 1. Identify (Create Mission)
-**API**: `POST /api/v1/campaigns/`
-- **Frontend Action**: A form to set the name, description (The "Why"), mission type (Education, Health, etc.), and location.
-- **Key Field**: `volunteers_required` (The Quota).
+SahyogSync v2.1 introduces a **Dual-Entry System** for mission creation, prioritizing speed through AI without sacrificing human oversight.
+
+### 1. Identify (The Dual Entry Gate)
+NGO Coordinators have two ways to initiate a mission:
+
+#### **A. AI Mode (The Campaign Architect) — RECOMMENDED** 🤖
+- **API**: `POST /api/v1/campaigns/draft`
+- **Workflow**: 
+    1. **Natural Language Input**: The coordinator types a simple sentence (e.g., *"Medical camp for 100 seniors at Gomti Nagar this Saturday"*).
+    2. **AI Analysis**: The LangChain-powered Agent (The Architect) extracts Goal, Scale, Location, and calculates the specific date.
+    3. **Draft Suggestion**: AI returns a JSON draft mirroring the full campaign form.
+- **🛡️ HUMAN-IN-THE-LOOP**: 
+    - The AI does **NOT** save the mission directly to the database. 
+    - The coordinator reviews the suggested draft on the dashboard, fine-tunes any details (like volunteer count or skills), and manually clicks **"Confirm & Create"**. 
+    - This ensures AI speed with 100% human accountability.
+
+#### **B. Manual Mode (Traditional)** ✍️
+- **API**: `POST /api/v1/campaigns/`
+- **Workflow**: Traditional form-filling where the coordinator manually enters every field (Name, Description, Quota, etc.).
+- **Use Case**: Complex missions with highly specific requirements that don't fit into a natural language prompt.
+
+---
 
 ### 2. Plan (Resource Allocation)
 - **Frontend Action**: Link existing `Inventory` items to the campaign.
