@@ -47,8 +47,13 @@ class MarketplaceAlertResponse(BaseModel):
     chat_id: str
     message_body: str
     donor_name: Optional[str]
+    phone_number: Optional[str]
+    item: Optional[str]
+    quantity: Optional[str]
+    location: Optional[str]
+    notes: Optional[str]
     created_at: datetime
-    is_confirmed: bool # New: Donor verification status
+    is_confirmed: bool
     is_processed: bool
 
     class Config:
@@ -177,16 +182,16 @@ async def convert_alert_to_marketplace_need(
     if alert.is_processed:
         raise HTTPException(status_code=400, detail="This alert has already been processed.")
 
-    # Create the MarketplaceNeed
-    need_description = f"Donation from {alert.donor_name or 'Donor'}: {alert.message_body}"
+    # Create the MarketplaceNeed using structured AI data if available
+    need_description = alert.notes if (alert.notes and alert.notes != "N/A") else alert.message_body
     
     new_need = MarketplaceNeed(
         org_id=current_user.org_id,
         marketplace_alert_id=alert.id,
         type=NeedType.FOOD,
-        description=need_description,
-        quantity="As per report",
-        pickup_address="Check donor contact",
+        description=f"ITEM: {alert.item or 'Not Specified'} | NOTES: {need_description}",
+        quantity=alert.quantity or "As per report",
+        pickup_address=alert.location or "Check donor contact",
         urgency=Urgency.HIGH,
         status=NeedStatus.OPEN
     )

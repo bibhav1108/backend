@@ -21,7 +21,8 @@ from backend.app.models import (
     MissionTeam,
     CampaignParticipationStatus,
     CampaignStatus,
-    MarketplaceInventory
+    MarketplaceInventory,
+    InboundMessage
 )
 from backend.app.services.otp import generate_otp_pair, verify_otp
 from backend.app.services.telegram_service import telegram_service
@@ -195,6 +196,31 @@ async def telegram_webhook(
     try:
         data = await request.json()
         
+        chat_id = data.get("message", {}).get("chat", {}).get("id") or \
+                  data.get("callback_query", {}).get("from", {}).get("id")
+        
+        message_id = data.get("message", {}).get("message_id") or \
+                     data.get("callback_query", {}).get("message", {}).get("message_id")
+
+        if not chat_id or not message_id:
+            return {"status": "invalid_update"}
+        
+        # --- Deduplication Guard ---
+        # Checks if this specific message from this chat has already been handled.
+        stmt_dup = select(InboundMessage).where(
+            InboundMessage.chat_id == str(chat_id), 
+            InboundMessage.message_id == message_id
+        )
+        existing = (await db.execute(stmt_dup)).scalar_one_or_none()
+        if existing:
+            print(f"[DEDUPE] Ignoring duplicate message {message_id} from {chat_id}")
+            return {"status": "duplicate_ignored"}
+        
+        # Log it as processed before continuing
+        new_inbound = InboundMessage(chat_id=str(chat_id), message_id=message_id)
+        db.add(new_inbound)
+        await db.commit()
+
         # --- 1. Handle Callbacks (Inline Buttons) ---
         if "callback_query" in data:
             callback = data["callback_query"]

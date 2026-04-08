@@ -23,6 +23,7 @@ from backend.app.api.v1.endpoints.organizations import router as organizations_r
 from backend.app.api.v1.endpoints.users import router as users_router
 from backend.app.api.v1.endpoints.meta import router as meta_router
 from backend.app.api.v1.endpoints.campaigns import router as campaigns_router
+from backend.app.api.v1.endpoints.marketplace_inventory import router as m_inventory_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -73,6 +74,7 @@ app.include_router(marketplace_router, prefix="/api/v1/needs", tags=["marketplac
 app.include_router(m_dispatches_router, prefix="/api/v1/marketplace/dispatches", tags=["marketplace"])
 app.include_router(inventory_router, prefix="/api/v1/inventory", tags=["inventory"])
 app.include_router(campaigns_router, prefix="/api/v1/campaigns", tags=["campaigns"])
+app.include_router(m_inventory_router, prefix="/api/v1/marketplace/inventory", tags=["marketplace"])
 
 @app.get("/")
 async def root():

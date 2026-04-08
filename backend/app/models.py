@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Enum as SQLEnum, JSON
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Enum as SQLEnum, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from geoalchemy2 import Geometry
 from backend.app.database import Base
@@ -136,6 +136,13 @@ class MarketplaceAlert(Base):
     message_body: Mapped[str] = mapped_column()
     phone_number: Mapped[Optional[str]] = mapped_column(nullable=True)
     donor_name: Mapped[Optional[str]] = mapped_column(nullable=True)
+    
+    # Structured AI Fields for Dashboard Visibility
+    item: Mapped[Optional[str]] = mapped_column(nullable=True)
+    quantity: Mapped[Optional[str]] = mapped_column(nullable=True)
+    location: Mapped[Optional[str]] = mapped_column(nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     is_confirmed: Mapped[bool] = mapped_column(default=False) # Donor must approve AI summary
     is_processed: Mapped[bool] = mapped_column(default=False) # NGO has converted to Need
@@ -244,6 +251,20 @@ class TelegramMessage(Base):
     chat_id: Mapped[str] = mapped_column(index=True)
     message_id: Mapped[int] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+class InboundMessage(Base):
+    """
+    Deduplication Store: Tracks incoming message IDs to prevent double-processing
+    during Telegram retries or rapid user clicks.
+    """
+    __tablename__ = "inbound_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    chat_id: Mapped[str] = mapped_column(index=True)
+    message_id: Mapped[int] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint('chat_id', 'message_id', name='_chat_message_uc'),)
 
 class AuditTrail(Base):
     __tablename__ = "audit_events"
