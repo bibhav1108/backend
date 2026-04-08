@@ -11,7 +11,8 @@ from backend.app.models import (
 )
 from backend.app.api.deps import get_current_user
 from backend.app.services.telegram_service import telegram_service
-from typing import List, Optional
+from backend.app.agents.campaign_agent import campaign_agent
+from typing import List, Optional, Any
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -31,6 +32,9 @@ class CampaignCreate(BaseModel):
     required_skills: Optional[List[str]] = None
     location_address: Optional[str] = None
     type: Optional[str] = "OTHER"
+
+class DraftRequest(BaseModel):
+    prompt: str
 
 class CampaignResponse(BaseModel):
     id: int
@@ -124,6 +128,19 @@ async def background_mission_broadcast(campaign_id: int, org_id: int, org_name: 
             print(f"[ERROR] Background Broadcast Failed: {e}")
 
 # --- Endpoints ---
+
+@router.post("/draft", response_model=Any)
+async def generate_campaign_draft(
+    request_in: DraftRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    AI Campaign Architect Agent:
+    Takes a natural language prompt and returns a structured JSON draft 
+    to populate the 'Create Campaign' form on the dashboard.
+    """
+    draft = await campaign_agent.generate_draft(request_in.prompt)
+    return draft
 
 @router.post("/", response_model=CampaignResponse)
 async def create_campaign(

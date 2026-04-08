@@ -90,7 +90,73 @@ sequenceDiagram
 
 ---
 
-## 🔵 Version 2.1: Strategic Resource Allocation (Optimization)
+## 🏢 Version 2.1: AI Supervision (The Intelligence Layer)
+*Goal: Supervised AI parsing, auto-deduplication, and structured report management.*
+
+### 🗺️ Operational Flow (Marketplace / Deduplication Guard)
+```mermaid
+sequenceDiagram
+    actor Donor
+    actor Bot
+    actor Backend
+    actor Gemini
+    actor NGO_Dashboard
+
+    Donor->>Bot: 📱 Msg: "Surplus Food at Gomti Nagar..."
+    
+    rect rgb(230, 240, 255)
+    Note over Bot, Backend: Deduplication Guard
+    Backend->>Backend: 🛡️ Check InboundMessage Table
+    alt Is Duplicate (Retry)
+        Backend-->>Bot: 🚫 Ignore (Return 200 OK)
+    else Is New Message
+        Backend->>Backend: 📝 Log Message ID
+    end
+    end
+
+    Backend->>Gemini: 🧠 Structured Parsing (Item/Qty/Location)
+    Gemini-->>Backend: 📋 JSON Payload (donations: [...])
+    
+    Backend->>Backend: 📊 Save Structured Columns to MarketplaceAlert
+    
+    Bot->>Donor: 🔢 "Confirm Summary? [✅ Rice/Dal @ Noida]"
+    
+    NGO_Dashboard->>Backend: 📄 View Structured Alerts (Columns)
+    NGO_Dashboard->>Backend: 🖱️ Convert to Need (Auto-fills address/item)
+```
+
+### 🗺️ Operational Flow (AI Campaign Architect)
+```mermaid
+sequenceDiagram
+    actor NGO_Admin
+    actor AIAgent
+    actor Backend
+    actor Inventory
+    actor Volunteer_Pool
+
+    NGO_Admin->>AIAgent: ✍️ "I want to feed 500 people in Hazratganj"
+    AIAgent->>Backend: 🧠 Parse Intent & Architect Plan
+    Backend-->>NGO_Admin: 📝 Campaign DRAFT (Name/Timeline/Resources)
+    
+    NGO_Admin->>NGO_Admin: 🖱️ Review & Edit Draft
+    NGO_Admin->>Backend: 🚀 ACTIVATE Mission
+    
+    Backend->>Inventory: 🔒 Reserve Stock
+    Backend->>Volunteer_Pool: 📣 Targeted Broadcast (Web Link)
+```
+
+### 🧩 Subparts & Components: V2.1 (AI Supervision)
+| Subpart | Component | Details |
+| :--- | :--- | :--- |
+| **Deduplication** | `InboundMessage` | Prevents Telegram retries from exhausting Gemini quotas. |
+| **Data Recovery** | Structured Storage | Saves item/qty/location in distinct DB columns for auditing. |
+| **Impact Tracker** | `MarketplaceInventory` | Auto-logs recovery history + NGO impact stats. |
+| **Draft Engine** | Campaign Architect | Proactive mission planning from natural language prompts. |
+| **V2 Guard** | 45-min OTP Expiry | Ensures mission integrity during high-speed pickups. |
+
+---
+
+## 🔵 Version 2.3: Operational Optimization (Roadmap)
 *Goal: Intelligent matching using PostGIS spatial queries and ML ranking.*
 
 ### 🗺️ Operational Flow (Smart Matching Lifecycle)
@@ -116,7 +182,7 @@ sequenceDiagram
 
 ---
 
-## 🔵 Version 2.5: Security & Fatigue (The Bridge)
+## 🔵 Version 2.5+: Security & Fatigue (Future Roadmap)
 *Goal: Ensuring volunteer safety and data privacy.*
 
 - **Fatigue Scoring**: Monitors volunteer workload to prevent burnout (Score = Hours + Mission count).

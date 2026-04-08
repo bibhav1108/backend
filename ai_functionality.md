@@ -1,4 +1,4 @@
-# SahyogSync V2.0: AI Parser & Intelligence Engine
+# SahyogSync V2.1.0: AI Supervision Engine
 
 This document outlines the core AI functionalities implemented to stabilize the marketplace flow and ensure high-tier data recovery.
 
