@@ -15,6 +15,21 @@ class PatchNote(BaseModel):
 # Hardcoded patch data for now
 PATCHES = [
     {
+        "version": "2.0.0",
+        "release_date": "2026-04-08",
+        "title": "SahyogSync Duality",
+        "features": [
+            "Dual-Engine Architecture (Marketplace & Campaigns)",
+            "Web-Based Mission Briefing Flow",
+            "Structured Volunteer Opt-in Gates",
+            "PostGIS-enabled Spatial Matching",
+            "Comprehensive Inventory (Strategic & Recovery)",
+            "Bulletproof OTP Stabilization Fixes"
+        ],
+        "status": "STABLE",
+        "note": "Complete architectural separation between reactive donor-recovery and proactive missions."
+    },
+    {
         "version": "1.5.0",
         "release_date": "2026-03-25",
         "title": "Trust & Track",
@@ -28,8 +43,8 @@ PATCHES = [
             "Automated Performance Stats (Completions/No-Shows)",
             "NGO Inventory Ledger"
         ],
-        "status": "STABLE",
-        "note": "Migration from Twilio to Telegram API for hackathon agility and free-tier access."
+        "status": "DEPRECATED",
+        "note": "Migration from Twilio to Telegram API completed."
     },
     {
         "version": "1.0.0",
@@ -57,4 +72,4 @@ async def get_current_version():
     """
     Get the current active application version.
     """
-    return {"version": "1.5.0", "codename": "Trust & Track"}
+    return {"version": "2.0.0", "codename": "SahyogSync Duality"}

@@ -161,9 +161,17 @@ async def verify_marketplace_otp(
 
     if dispatch.otp_used:
         raise HTTPException(status_code=400, detail="OTP already used")
+    
+    # 1. Status Check: Only ACCEPTED missions have valid OTPs
+    if dispatch.status != DispatchStatus.ACCEPTED:
+        raise HTTPException(status_code=400, detail="Mission is not in ACCEPTED state. Verification not possible.")
 
-    # Verify logic
-    if not verify_otp(data.otp_code, dispatch.otp_hash):
+    # 2. Expiry Check
+    if dispatch.otp_expires_at and datetime.utcnow() > dispatch.otp_expires_at:
+        raise HTTPException(status_code=401, detail="OTP has expired. Please re-generate or re-accept the mission.")
+
+    # 3. Verify Code
+    if not dispatch.otp_hash or not verify_otp(data.otp_code, dispatch.otp_hash):
         dispatch.otp_attempts += 1
         await db.commit()
         raise HTTPException(status_code=401, detail="Invalid OTP code.")

@@ -333,8 +333,25 @@ async def telegram_webhook(
 
             # --- Donor Prompt Handler ---
             if data_payload.startswith("prompt_otp_"):
-                prompt_msg = "✍️ *Action Required*: Please type the 6-digit code shown by the volunteer now to complete the mission! 🤝"
-                await send_and_log(bg=background_tasks, chat_id=chat_id, text=prompt_msg)
+                dispatch_id = int(data_payload.split("_")[2])
+                try:
+                    # Verify dispatch belongs to this donor
+                    stmt_v = select(MarketplaceDispatch).join(MarketplaceNeed).join(MarketplaceAlert).where(
+                        MarketplaceDispatch.id == dispatch_id,
+                        MarketplaceAlert.chat_id == chat_id
+                    )
+                    dispatch = (await db.execute(stmt_v)).scalar_one_or_none()
+                    
+                    if not dispatch:
+                         await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Error*: Mission record not found or inaccessible.")
+                    elif dispatch.status != DispatchStatus.ACCEPTED:
+                         await send_and_log(bg=background_tasks, chat_id=chat_id, text="⏳ *Wait for Volunteer*: Please wait for the volunteer to reach your location and share the code! 🦸‍♂️")
+                    else:
+                        prompt_msg = "✍️ *Action Required*: Please type the 6-digit code shown by the volunteer now to complete the mission! 🤝"
+                        await send_and_log(bg=background_tasks, chat_id=chat_id, text=prompt_msg)
+                except Exception as e:
+                    print(f"[ERROR] Prompt OTP Handler Failed: {e}")
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Error*: Unable to process request. Please try again later.")
             
             return {"status": "callback_handled"}
 
@@ -575,68 +592,84 @@ async def telegram_webhook(
 
         # --- 3. Handle OTP Verification (Donor-Side Completion) ---
         if text and text.isdigit() and len(text) == 6:
-            # Check if this user has an active donor mission
-            stmt_otp = (
-                select(MarketplaceDispatch)
-                .join(MarketplaceNeed, MarketplaceDispatch.marketplace_need_id == MarketplaceNeed.id)
-                .join(MarketplaceAlert, MarketplaceNeed.marketplace_alert_id == MarketplaceAlert.id)
-                .where(
-                    MarketplaceAlert.chat_id == chat_id,
-                    MarketplaceDispatch.status.in_([DispatchStatus.SENT, DispatchStatus.ACCEPTED])
+            try:
+                # Check if this user has an active donor mission
+                # CRITICAL: Only check for ACCEPTED missions (SENT missions don't have OTPs generated yet)
+                stmt_otp = (
+                    select(MarketplaceDispatch)
+                    .join(MarketplaceNeed, MarketplaceDispatch.marketplace_need_id == MarketplaceNeed.id)
+                    .join(MarketplaceAlert, MarketplaceNeed.marketplace_alert_id == MarketplaceAlert.id)
+                    .where(
+                        MarketplaceAlert.chat_id == chat_id,
+                        MarketplaceDispatch.status == DispatchStatus.ACCEPTED
+                    )
+                    .order_by(desc(MarketplaceDispatch.created_at))
+                    .limit(1)
                 )
-            )
-            dispatch = (await db.execute(stmt_otp)).scalar_one_or_none()
-            
-            if dispatch:
-                print(f"[TRACE] OTP Detected from Donor. Dispatch ID: {dispatch.id}")
-                if verify_otp(text, dispatch.otp_hash):
-                    # SUCCESS: Complete the Mission
-                    dispatch.status = DispatchStatus.COMPLETED
-                    dispatch.otp_used = True
+                dispatch = (await db.execute(stmt_otp)).scalar_one_or_none()
+                
+                if dispatch:
+                    print(f"[TRACE] OTP Detected from Donor. Dispatch ID: {dispatch.id}")
                     
-                    # Update related need
-                    stmt_need = select(MarketplaceNeed).where(MarketplaceNeed.id == dispatch.marketplace_need_id).options(selectinload(MarketplaceNeed.marketplace_alert))
-                    need = (await db.execute(stmt_need)).scalar_one()
-                    need.status = NeedStatus.COMPLETED
-                    
-                    # Recovered Item to Inventory
-                    recovery_entry = MarketplaceInventory(
-                        org_id=need.org_id,
-                        item_name=f"Recovered {need.type.name}",
-                        quantity=1.0, # Placeholder
-                        unit=need.quantity,
-                        collected_at=datetime.utcnow()
-                    )
-                    db.add(recovery_entry)
-                    
-                    # Update Volunteer Stats
-                    stmt_stats = select(VolunteerStats).where(VolunteerStats.volunteer_id == dispatch.volunteer_id)
-                    stats = (await db.execute(stmt_stats)).scalar_one_or_none()
-                    if stats: stats.completions += 1
-                    
-                    await db.commit()
-                    print(f"[TRACE] Mission {dispatch.id} COMPLETED via Donor OTP.")
-                    
-                    # Feedback to Donor
-                    impact_msg = (
-                        "🎊 *IMPACT RECORDED!* 🎊\n\n"
-                        "Thank you so much! Your contribution has been safely collected and logged. "
-                        "Because of you, we are one step closer to a hunger-free world. 🌍🤝"
-                    )
-                    await send_and_log(bg=background_tasks, chat_id=chat_id, text=impact_msg)
-                    
-                    # Feedback to Volunteer
-                    stmt_vol = select(Volunteer).where(Volunteer.id == dispatch.volunteer_id)
-                    volunteer = (await db.execute(stmt_vol)).scalar_one()
-                    if volunteer.telegram_chat_id:
-                        await telegram_service.send_message(
-                            chat_id=volunteer.telegram_chat_id,
-                            text="✅ *Mission Complete!* The donor has verified your pickup. Great job, Hero! 🌟"
+                    # 1. Check Expiry
+                    if dispatch.otp_expires_at and datetime.utcnow() > dispatch.otp_expires_at:
+                        await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *OTP Expired*: This code is no longer valid. Please ask the volunteer to re-accept the mission or contact support.")
+                        return {"status": "otp_expired"}
+
+                    # 2. Verify Code
+                    if verify_otp(text, dispatch.otp_hash):
+                        # SUCCESS: Complete the Mission
+                        dispatch.status = DispatchStatus.COMPLETED
+                        dispatch.otp_used = True
+                        
+                        # Update related need
+                        stmt_need = select(MarketplaceNeed).where(MarketplaceNeed.id == dispatch.marketplace_need_id).options(selectinload(MarketplaceNeed.marketplace_alert))
+                        need = (await db.execute(stmt_need)).scalar_one()
+                        need.status = NeedStatus.COMPLETED
+                        
+                        # Recovered Item to Inventory
+                        recovery_entry = MarketplaceInventory(
+                            org_id=need.org_id,
+                            item_name=f"Recovered {need.type.name}",
+                            quantity=1.0, # Placeholder
+                            unit=need.quantity,
+                            collected_at=datetime.utcnow()
                         )
-                    return {"status": "otp_verified"}
-                else:
-                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Invalid Code.* Please check the 6-digit code shown by the volunteer.")
-                    return {"status": "otp_invalid"}
+                        db.add(recovery_entry)
+                        
+                        # Update Volunteer Stats
+                        stmt_stats = select(VolunteerStats).where(VolunteerStats.volunteer_id == dispatch.volunteer_id)
+                        stats = (await db.execute(stmt_stats)).scalar_one_or_none()
+                        if stats: stats.completions += 1
+                        
+                        await db.commit()
+                        print(f"[TRACE] Mission {dispatch.id} COMPLETED via Donor OTP.")
+                        
+                        # Feedback to Donor
+                        impact_msg = (
+                            "🎊 *IMPACT RECORDED!* 🎊\n\n"
+                            "Thank you so much! Your contribution has been safely collected and logged. "
+                            "Because of you, we are one step closer to a hunger-free world. 🌍🤝"
+                        )
+                        await send_and_log(bg=background_tasks, chat_id=chat_id, text=impact_msg)
+                        
+                        # Feedback to Volunteer
+                        stmt_vol = select(Volunteer).where(Volunteer.id == dispatch.volunteer_id)
+                        volunteer = (await db.execute(stmt_vol)).scalar_one()
+                        if volunteer.telegram_chat_id:
+                            await telegram_service.send_message(
+                                chat_id=volunteer.telegram_chat_id,
+                                text="✅ *Mission Complete!* The donor has verified your pickup. Great job, Hero! 🌟"
+                            )
+                        return {"status": "otp_verified"}
+                    else:
+                        await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Invalid Code.* Please check the 6-digit code shown by the volunteer.")
+                        return {"status": "otp_invalid"}
+            except Exception as e:
+                print(f"[ERROR] OTP Verification Webhook Failed: {e}")
+                traceback.print_exc()
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *System Error*: Something went wrong while verifying your code. Please try again in a few moments.")
+                return {"status": "error"}
 
         # --- 4. Surplus Reporting (The AI Ingestion Flow) ---
         if text and not text.startswith("/"):
