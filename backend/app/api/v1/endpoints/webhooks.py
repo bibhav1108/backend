@@ -656,9 +656,12 @@ async def telegram_webhook(
                     print(f"[TRACE] OTP Detected from Donor. Dispatch ID: {dispatch.id}")
                     
                     # 1. Check Expiry
-                    if dispatch.otp_expires_at and datetime.utcnow() > dispatch.otp_expires_at:
-                        await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *OTP Expired*: This code is no longer valid. Please ask the volunteer to re-accept the mission or contact support.")
-                        return {"status": "otp_expired"}
+                    if dispatch.otp_expires_at:
+                        # Ensure timezone-naive comparison stays consistent or use awareness
+                        now = datetime.utcnow()
+                        if now > dispatch.otp_expires_at:
+                            await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *OTP Expired*: This code is no longer valid. Please ask the volunteer to re-accept the mission or contact support.")
+                            return {"status": "otp_expired"}
 
                     # 2. Verify Code
                     if verify_otp(text, dispatch.otp_hash):
@@ -709,6 +712,11 @@ async def telegram_webhook(
                     else:
                         await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Invalid Code.* Please check the 6-digit code shown by the volunteer.")
                         return {"status": "otp_invalid"}
+                else:
+                    # User typed a 6-digit number but we didn't find an active mission for them as donor
+                    print(f"[TRACE] 6-digit number received from {chat_id} but no active ACCEPTED dispatch found for this donor.")
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="🔍 *Mission Not Found*: We found no active missions linked to your account for this PIN. If you are a volunteer, please ask the donor to type this code in their chat! 🤝")
+                    return {"status": "no_active_mission"}
             except Exception as e:
                 print(f"[ERROR] OTP Verification Webhook Failed: {e}")
                 traceback.print_exc()

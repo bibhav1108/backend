@@ -147,6 +147,8 @@ class MarketplaceAlert(Base):
     is_confirmed: Mapped[bool] = mapped_column(default=False) # Donor must approve AI summary
     is_processed: Mapped[bool] = mapped_column(default=False) # NGO has converted to Need
 
+    marketplace_needs: Mapped[List["MarketplaceNeed"]] = relationship(back_populates="marketplace_alert")
+
 class MarketplaceNeed(Base):
     __tablename__ = "marketplace_needs"
 
@@ -163,6 +165,7 @@ class MarketplaceNeed(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     organization: Mapped["Organization"] = relationship(back_populates="marketplace_needs")
+    marketplace_alert: Mapped["MarketplaceAlert"] = relationship(back_populates="marketplace_needs")
     dispatches: Mapped[List["MarketplaceDispatch"]] = relationship(back_populates="marketplace_need")
 
 class MarketplaceDispatch(Base):
