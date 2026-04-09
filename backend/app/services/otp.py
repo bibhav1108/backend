@@ -2,7 +2,7 @@ import hmac
 import hashlib
 import random
 import string
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from backend.app.config import settings
 
 def generate_otp_code(length: int = 6) -> str:
@@ -22,7 +22,7 @@ def generate_otp_pair(expiry_minutes: int = 45) -> tuple[str, str, datetime]:
     """
     raw_code = generate_otp_code()
     hashed = hash_otp(raw_code)
-    expires_at = datetime.utcnow() + timedelta(minutes=expiry_minutes)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=expiry_minutes)
     return raw_code, hashed, expires_at
 
 def verify_otp(raw_code: str, stored_hash: str, secret_key: str = settings.SECRET_KEY) -> bool:

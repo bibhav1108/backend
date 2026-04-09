@@ -14,7 +14,7 @@ from backend.app.services.telegram_service import telegram_service
 from backend.app.agents.campaign_agent import campaign_agent
 from typing import List, Optional, Any
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 router = APIRouter()
 
@@ -459,7 +459,7 @@ async def complete_campaign(
             "mission": campaign.name,
             "inventory_spent": campaign.items,
             "volunteers_involved": approved_volunteers,
-            "completion_time": datetime.utcnow()
+            "completion_time": datetime.now(timezone.utc)
         }
     }
 

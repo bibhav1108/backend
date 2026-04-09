@@ -16,7 +16,7 @@ from backend.app.api.deps import get_current_user
 from backend.app.services.otp import verify_otp
 from backend.app.services.telegram_service import telegram_service
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 # --- Schemas ---
@@ -191,7 +191,7 @@ async def verify_marketplace_otp(
         item_name=f"Recovered {need.type.name}", # e.g. Recovered FOOD
         quantity=1.0, # Placeholder quantity if not parsed as float
         unit=need.quantity, # Store original quantity string as unit/desc
-        collected_at=datetime.utcnow()
+        collected_at=datetime.now(timezone.utc)
     )
     db.add(recovery_entry)
 

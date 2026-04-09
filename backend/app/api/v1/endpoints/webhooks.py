@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Request, BackgroundTasks
 import os
 import traceback
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, delete
 from sqlalchemy.orm import selectinload
@@ -682,9 +682,15 @@ async def telegram_webhook(
                     
                     # 1. Check Expiry
                     if dispatch.otp_expires_at:
-                        # Ensure timezone-naive comparison stays consistent or use awareness
-                        now = datetime.utcnow()
-                        if now > dispatch.otp_expires_at:
+                        # Ensure timezone-aware comparison
+                        now = datetime.now(timezone.utc)
+                        expiry = dispatch.otp_expires_at
+                        # SQLAlchemy might return it as naive; ensure it's treated as UTC aware
+                        if expiry.tzinfo is None:
+                            expiry = expiry.replace(tzinfo=timezone.utc)
+                        
+                        if now > expiry:
+                            print(f"[DEBUG] OTP EXPIRED: Now={now}, Expiry={expiry}, Diff={now - expiry}")
                             await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *OTP Expired*: This code is no longer valid. Please ask the volunteer to re-accept the mission or contact support.")
                             return {"status": "otp_expired"}
 
@@ -705,7 +711,7 @@ async def telegram_webhook(
                             item_name=f"Recovered {need.type.name}",
                             quantity=1.0, # Placeholder
                             unit=need.quantity,
-                            collected_at=datetime.utcnow()
+                            collected_at=datetime.now(timezone.utc)
                         )
                         db.add(recovery_entry)
                         

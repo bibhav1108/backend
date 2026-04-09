@@ -1,9 +1,9 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Enum as SQLEnum, JSON, UniqueConstraint
+﻿from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Enum as SQLEnum, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from geoalchemy2 import Geometry
 from backend.app.database import Base
 import enum
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 # --- Enums ---
@@ -69,7 +69,7 @@ class Organization(Base):
     contact_phone: Mapped[str] = mapped_column(unique=True)
     contact_email: Mapped[str] = mapped_column(unique=True)
     status: Mapped[str] = mapped_column(default="pending")  # pending/active
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     volunteers: Mapped[List["Volunteer"]] = relationship(back_populates="organization")
     marketplace_needs: Mapped[List["MarketplaceNeed"]] = relationship(back_populates="organization")
@@ -91,7 +91,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column()
     full_name: Mapped[Optional[str]] = mapped_column(nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     organization: Mapped["Organization"] = relationship(back_populates="users")
 
@@ -110,7 +110,7 @@ class Volunteer(Base):
     zone: Mapped[Optional[str]] = mapped_column(nullable=True)
     
     location = Column(Geometry(geometry_type='POINT', srid=4326), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     organization: Mapped["Organization"] = relationship(back_populates="volunteers")
     stats: Mapped["VolunteerStats"] = relationship(back_populates="volunteer", uselist=False)
@@ -124,7 +124,7 @@ class VolunteerStats(Base):
     hours_served: Mapped[float] = mapped_column(default=0.0)
     
     last_dispatch_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     volunteer: Mapped["Volunteer"] = relationship(back_populates="stats")
 
@@ -143,7 +143,7 @@ class MarketplaceAlert(Base):
     location: Mapped[Optional[str]] = mapped_column(nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
     is_confirmed: Mapped[bool] = mapped_column(default=False) # Donor must approve AI summary
     is_processed: Mapped[bool] = mapped_column(default=False) # NGO has converted to Need
 
@@ -166,7 +166,7 @@ class MarketplaceNeed(Base):
     urgency: Mapped[Urgency] = mapped_column(SQLEnum(Urgency), default=Urgency.MEDIUM)
     status: Mapped[NeedStatus] = mapped_column(SQLEnum(NeedStatus), default=NeedStatus.OPEN)
     pickup_deadline: Mapped[Optional[datetime]] = mapped_column(nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     organization: Mapped["Organization"] = relationship(back_populates="marketplace_needs")
     marketplace_alert: Mapped["MarketplaceAlert"] = relationship(back_populates="marketplace_needs")
@@ -185,7 +185,7 @@ class MarketplaceDispatch(Base):
     otp_attempts: Mapped[int] = mapped_column(default=0)
     
     status: Mapped[DispatchStatus] = mapped_column(SQLEnum(DispatchStatus), default=DispatchStatus.SENT)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     marketplace_need: Mapped["MarketplaceNeed"] = relationship(back_populates="dispatches")
     volunteer: Mapped["Volunteer"] = relationship()
@@ -208,7 +208,7 @@ class NGO_Campaign(Base):
     required_skills: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
     location_address: Mapped[Optional[str]] = mapped_column(nullable=True)
     
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     organization: Mapped["Organization"] = relationship(back_populates="campaigns")
     participants: Mapped[List["MissionTeam"]] = relationship(back_populates="campaign")
@@ -220,7 +220,7 @@ class MissionTeam(Base):
     campaign_id: Mapped[int] = mapped_column(ForeignKey("ngo_campaigns.id"))
     volunteer_id: Mapped[int] = mapped_column(ForeignKey("volunteers.id"))
     status: Mapped[CampaignParticipationStatus] = mapped_column(SQLEnum(CampaignParticipationStatus), default=CampaignParticipationStatus.PENDING)
-    joined_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    joined_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     campaign: Mapped["NGO_Campaign"] = relationship(back_populates="participants")
     volunteer: Mapped["Volunteer"] = relationship()
@@ -235,7 +235,7 @@ class Inventory(Base):
     unit: Mapped[str] = mapped_column()
     category: Mapped[str] = mapped_column(default="OTHERS")
     reserved_quantity: Mapped[float] = mapped_column(default=0.0)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     organization: Mapped["Organization"] = relationship(back_populates="inventory")
 
@@ -247,7 +247,7 @@ class MarketplaceInventory(Base):
     item_name: Mapped[str] = mapped_column(index=True)
     quantity: Mapped[float] = mapped_column(default=0.0)
     unit: Mapped[str] = mapped_column()
-    collected_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    collected_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     organization: Mapped["Organization"] = relationship(back_populates="marketplace_inventory")
 
@@ -257,7 +257,7 @@ class TelegramMessage(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     chat_id: Mapped[str] = mapped_column(index=True)
     message_id: Mapped[int] = mapped_column()
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
 class InboundMessage(Base):
     """
@@ -269,7 +269,7 @@ class InboundMessage(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     chat_id: Mapped[str] = mapped_column(index=True)
     message_id: Mapped[int] = mapped_column()
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (UniqueConstraint('chat_id', 'message_id', name='_chat_message_uc'),)
 
@@ -282,4 +282,4 @@ class AuditTrail(Base):
     event_type: Mapped[str] = mapped_column()
     target_id: Mapped[Optional[str]] = mapped_column(nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))

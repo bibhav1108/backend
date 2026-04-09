@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
@@ -29,7 +29,7 @@ class CampaignAgent:
         self.chain = self.prompt | self.model | self.parser
 
     async def generate_draft(self, text: str) -> Dict[str, Any]:
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         try:
             return await self.chain.ainvoke({"text": text, "today": today_str})
         except Exception:
