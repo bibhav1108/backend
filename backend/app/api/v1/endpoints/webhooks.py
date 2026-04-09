@@ -147,7 +147,31 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int):
                 await telegram_service.send_message(chat_id, missing_msg)
                 return
 
-            if parsed:
+            if isinstance(parsed, dict):
+                # Save predictions to the alert record for better conversion
+                stmt_updt = select(MarketplaceAlert).where(MarketplaceAlert.id == alert_id)
+                alert = (await db.execute(stmt_updt)).scalar_one_or_none()
+                
+                if alert:
+                    alert.item = parsed.get("item", "N/A")
+                    alert.quantity = parsed.get("quantity", "N/A")
+                    alert.location = parsed.get("location", "N/A")
+                    alert.notes = parsed.get("notes", "N/A")
+                    
+                    # Store Enums if valid
+                    try:
+                        cat = parsed.get("category", "OTHER").upper()
+                        if cat in ["FOOD", "WATER", "KIT", "BLANKET", "MEDICAL", "VEHICLE", "OTHER"]:
+                            alert.predicted_type = cat
+                        
+                        urg = parsed.get("urgency", "MEDIUM").upper()
+                        if urg in ["LOW", "MEDIUM", "HIGH"]:
+                            alert.predicted_urgency = urg
+                    except:
+                        pass
+                    
+                    await db.commit()
+
                 # Check for Fallback notice
                 notice = "⚠️ *Plan B: Basic Sync Used (AI Busy)*\n\n" if parsed.get("fallback_used") else "🤖 *Summary - Please Confirm*\n\n"
                 
@@ -156,6 +180,7 @@ async def process_ai_surplus_report(chat_id: str, text: str, alert_id: int):
                     f"📦 *Item*: {parsed.get('item', 'N/A')}\n"
                     f"🔢 *Quantity*: {parsed.get('quantity', 'N/A')}\n"
                     f"📍 *Location*: {parsed.get('location', 'N/A')}\n"
+                    f"🏷️ *Category*: {parsed.get('category', 'OTHER')}\n"
                     f"📝 *Notes*: {parsed.get('notes', 'None')}\n\n"
                     f"✨ *Is this correct?* Confirming will help local NGOs reach you faster."
                 )

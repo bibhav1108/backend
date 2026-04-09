@@ -188,11 +188,11 @@ async def convert_alert_to_marketplace_need(
     new_need = MarketplaceNeed(
         org_id=current_user.org_id,
         marketplace_alert_id=alert.id,
-        type=NeedType.FOOD,
+        type=alert.predicted_type or NeedType.FOOD,
         description=f"ITEM: {alert.item or 'Not Specified'} | NOTES: {need_description}",
         quantity=alert.quantity or "As per report",
         pickup_address=alert.location or "Check donor contact",
-        urgency=Urgency.HIGH,
+        urgency=alert.predicted_urgency or Urgency.HIGH,
         status=NeedStatus.OPEN
     )
     

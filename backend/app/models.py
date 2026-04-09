@@ -147,6 +147,10 @@ class MarketplaceAlert(Base):
     is_confirmed: Mapped[bool] = mapped_column(default=False) # Donor must approve AI summary
     is_processed: Mapped[bool] = mapped_column(default=False) # NGO has converted to Need
 
+    # AI Predictions for easier NGO conversion
+    predicted_type: Mapped[Optional[NeedType]] = mapped_column(SQLEnum(NeedType), nullable=True)
+    predicted_urgency: Mapped[Optional[Urgency]] = mapped_column(SQLEnum(Urgency), nullable=True)
+
     marketplace_needs: Mapped[List["MarketplaceNeed"]] = relationship(back_populates="marketplace_alert")
 
 class MarketplaceNeed(Base):

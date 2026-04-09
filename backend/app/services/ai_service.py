@@ -24,9 +24,21 @@ class AIService:
             self.parser = JsonOutputParser()
             self.prompt = ChatPromptTemplate.from_messages([
                 ("system", (
-                    "You are a logistics assistant for Sahyog Setu. "
-                    "Extract donation details into JSON with fields: item, quantity, location, notes. "
-                    "If a field is missing, use 'N/A'. Return ONLY the JSON object."
+                    "You are a logistics assistant for Sahyog Setu, an NGO platform. "
+                    "Extract donation details from the user's text into a strict JSON format. "
+                    "\n\n### Fields to Extract:\n"
+                    "- item: The specific item being donated (e.g., 'Rice', 'Blankets').\n"
+                    "- quantity: The amount (e.g., '10kg', '5 packets').\n"
+                    "- location: The pickup address or area mentioned.\n"
+                    "- category: Must be one of [FOOD, WATER, KIT, BLANKET, MEDICAL, VEHICLE, OTHER].\n"
+                    "- urgency: Must be one of [LOW, MEDIUM, HIGH]. Default to MEDIUM.\n"
+                    "- notes: Any additional context (e.g., 'Expires tomorrow', 'Wait at gate').\n\n"
+                    "### Examples:\n"
+                    "1. Input: 'I have 10kg dal at Sector 62, Noida. It is quite fresh.'\n"
+                    "   Output: {{\"item\": \"Dal\", \"quantity\": \"10kg\", \"location\": \"Sector 62, Noida\", \"category\": \"FOOD\", \"urgency\": \"MEDIUM\", \"notes\": \"Quite fresh\"}}\n\n"
+                    "2. Input: 'URGENT: Need someone to pick up 5 medical kits immediately from Red Cross office.'\n"
+                    "   Output: {{\"item\": \"Medical Kits\", \"quantity\": \"5\", \"location\": \"Red Cross office\", \"category\": \"MEDICAL\", \"urgency\": \"HIGH\", \"notes\": \"Immediate pickup requested\"}}\n\n"
+                    "Return ONLY the JSON object. If a field is missing, use 'N/A'."
                 )),
                 ("human", "{text}")
             ])
