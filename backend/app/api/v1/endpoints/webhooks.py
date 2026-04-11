@@ -26,7 +26,8 @@ from backend.app.models import (
     User,
     UserRole
 )
-from backend.app.services.auth_utils import generate_otp_pair, verify_otp, get_password_hash
+from backend.app.volunteers.service import onboard_volunteer_via_telegram
+from backend.app.services.auth_utils import generate_otp_pair, verify_otp
 from backend.app.services.telegram_service import telegram_service
 from backend.app.services.ai_service import ai_service
 from backend.app.notifications.service import notification_service
@@ -460,63 +461,21 @@ async def telegram_webhook(
             norm_phone = normalize_phone(raw_phone)
             
             print(f"[TRACE] Verifying Contact: {raw_phone} -> Normalized: {norm_phone}")
-
-            # 1. Dashboard-First Check: Look for a match among pre-registered volunteers
-            # We check if preserved phone number ends with the normalized digits
-            stmt_check = select(Volunteer).where(Volunteer.phone_number.like(f"%{norm_phone}"))
-            v = (await db.execute(stmt_check)).scalar_one_or_none()
             
-            if v:
-                # 1. MATCH FOUND: Prepare Credentials
-                first_name = v.name.split()[0].lower()
-                clean_phone = norm_phone[-4:] # Use last 4 digits
-                
-                # Rule: first_name + last 4 digits of number
-                username = f"{first_name}{clean_phone}"
-                
-                # Rule: firstname + @ + random 3 numbers
-                random_digits = "".join(random.choices(string.digits, k=3))
-                raw_password = f"{first_name}@{random_digits}"
-                
-                # 2. Check if User already exists (idempotency)
-                if not v.user_id:
-                    # Create auth account
-                    new_user = User(
-                        org_id=v.org_id,
-                        username=username,
-                        hashed_password=get_password_hash(raw_password),
-                        full_name=v.name,
-                        role=UserRole.VOLUNTEER,
-                        is_active=True
-                    )
-                    db.add(new_user)
-                    await db.flush()
-                    v.user_id = new_user.id
-                
-                # 3. Activate Volunteer
-                v.telegram_chat_id = chat_id
-                v.telegram_active = True
-                
-                # OPTIONAL: Initialize stats if missing (safety check)
-                stmt_stats = select(VolunteerStats).where(VolunteerStats.volunteer_id == v.id)
-                stats_exist = (await db.execute(stmt_stats)).scalar_one_or_none()
-                if not stats_exist:
-                    db.add(VolunteerStats(volunteer_id=v.id))
-
-                await db.commit()
-                
-                # 4. Secure Credential Delivery
+            # Delegate to Volunteer Service
+            creds = await onboard_volunteer_via_telegram(db, norm_phone, chat_id)
+            
+            if creds:
                 welcome_msg = (
                     f"🎉 *Verification Successful!*\n\n"
-                    f"Welcome to the team, *{v.name}*! Your account has been activated.\n\n"
-                    f"👤 *Username*: `{username}`\n"
-                    f"🔐 *Password*: `{raw_password}`\n\n"
+                    f"Welcome to the team, *{creds['name']}*! Your account has been activated.\n\n"
+                    f"👤 *Username*: `{creds['username']}`\n"
+                    f"🔐 *Password*: `{creds['password']}`\n\n"
                     f"Keep these credentials safe. You will need them to log in to the SahyogSync volunteer portal. 🚀"
                 )
                 await send_and_log(bg=background_tasks, chat_id=chat_id, text=welcome_msg)
                 return {"status": "verified"}
             else:
-                # NO MATCH: Reject as per user logic
                 reject_msg = (
                     "⚠️ *Access Denied*\n\n"
                     f"The number `{raw_phone}` is not registered in our NGO dashboard.\n\n"

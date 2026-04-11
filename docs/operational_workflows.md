@@ -157,8 +157,34 @@ sequenceDiagram
 
 ---
 
-## 🔔 Version 2.2: Event Hub (The Coordination Layer)
-*Goal: Centralized, clickable activity feed for real-time NGO coordination.*
+## 🔔 Version 2.2: Verified Trust & Event Hub (The Coordination Layer)
+*Goal: Centralized activity feed + Automated volunteer trust & identity management.*
+
+### 🗺️ Operational Flow (Volunteer Trust & Onboarding)
+```mermaid
+sequenceDiagram
+    actor Vol as Volunteer
+    actor Bot as Telegram Bot
+    actor BE as Backend
+    actor Email as Email Service
+    actor Admin as NGO Admin
+
+    Vol->>Bot: 📱 Share Contact
+    Bot->>BE: 📡 Match Phone & Auto-Generate User
+    BE-->>Bot: 🔐 Return Credentials (Username/Password)
+    Bot->>Vol: 🎉 "Welcome! Log in with these details..."
+    
+    rect rgb(235, 245, 235)
+    Note over Vol, BE: Identity Verification Flow
+    Vol->>BE: 📧 Update Profile (Email)
+    BE->>Email: 🔢 Send OTP/Verification Link
+    Vol->>BE: ✅ Verify Email
+    BE->>BE: 📈 Status: ID_VERIFIED (+10 Trust Score)
+    end
+
+    Admin->>BE: 🕵️ Review Documents / ID
+    Admin->>BE: 🥇 Mark as "TRUSTED" Tier
+```
 
 ### 🗺️ Operational Flow (Unified Notification Engine)
 ```mermaid
@@ -181,14 +207,15 @@ sequenceDiagram
     NGO_Dashboard->>Marketplace/Campaigns: 🖱️ Click Notification -> Navigate to specific ID
 ```
 
-### 🧩 Subparts & Components: V2.2 (Coordination Layer)
+### 🧩 Subparts & Components: V2.2 (Verified Coordination)
 | Subpart | Component | Details |
 | :--- | :--- | :--- |
-| **Activity Feed** | `NotificationService` | Central engine for generating human-readable alerts from raw system events. |
+| **Activity Feed** | `NotificationService` | Central engine for generating human-readable alerts from raw system events (Campaign join, OTP verify). |
+| **Trust Tier System** | RBAC Guard | Categorizes volunteers into **NEW**, **ACTIVE**, and **ID_VERIFIED** based on security milestones. |
+| **Identity Automator** | Credential Gen | Converts Telegram contacts into full `User` accounts using standardized naming rules. |
+| **Security Layer** | Email/OTP Service | Handles time-bound (10-min) OTPs for password resets and identity verification. |
 | **Deep-Linking** | Data Metadata | Stores target entity IDs (`campaign_id`, `alert_id`) in JSON for instant UI navigation. |
-| **Priority Engine** | Alert Severity | Categorizes events as INFO, SUCCESS, WARNING, or ERROR for color-coded dashboard alerts. |
-| **Cleanup Hub** | Read Management | Supports "Mark as Read" and "Mark All Read" for efficient daily workspace management. |
-| **Robust AI** | Enhanced Parsing | AI Campaign Architect now handles unstructured markdown outputs and logs failures for auditing. |
+| **Modular Core** | `app/volunteers/` | Consolidated directory for all volunteer schemas, services, and routing. |
 
 ---
 

@@ -16,6 +16,7 @@ from backend.app.api.deps import get_current_user
 from backend.app.services.otp import verify_otp
 from backend.app.services.telegram_service import telegram_service
 from backend.app.notifications.service import notification_service
+from backend.app.volunteers.service import increment_volunteer_completions
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -197,9 +198,7 @@ async def verify_marketplace_otp(
     db.add(recovery_entry)
 
     # 2. Update VolunteerStats
-    stats_stmt = select(VolunteerStats).where(VolunteerStats.volunteer_id == dispatch.volunteer_id)
-    stats = (await db.execute(stats_stmt)).scalar_one()
-    stats.completions += 1
+    await increment_volunteer_completions(db, dispatch.volunteer_id)
 
     await db.commit()
 
