@@ -157,6 +157,41 @@ sequenceDiagram
 
 ---
 
+## 🔔 Version 2.2: Event Hub (The Coordination Layer)
+*Goal: Centralized, clickable activity feed for real-time NGO coordination.*
+
+### 🗺️ Operational Flow (Unified Notification Engine)
+```mermaid
+sequenceDiagram
+    actor System_Events
+    actor Telegram_Webhook
+    actor Notification_Service
+    actor NGO_Dashboard
+    actor Marketplace/Campaigns
+
+    System_Events->>Notification_Service: 📡 Trigger: Donor Confirm / Mission Accept / Complete
+    Telegram_Webhook->>Notification_Service: 📱 Trigger: Bot Interaction Events
+    
+    Notification_Service->>Notification_Service: 📝 Log to 'notifications' table (Priority/Data)
+    Notification_Service-->>System_Events: 201 Created
+    
+    NGO_Dashboard->>Notification_Service: 🔄 Poll /api/v1/notifications
+    Notification_Service-->>NGO_Dashboard: 📑 Return Activity Feed (Clickable metadata)
+    
+    NGO_Dashboard->>Marketplace/Campaigns: 🖱️ Click Notification -> Navigate to specific ID
+```
+
+### 🧩 Subparts & Components: V2.2 (Coordination Layer)
+| Subpart | Component | Details |
+| :--- | :--- | :--- |
+| **Activity Feed** | `NotificationService` | Central engine for generating human-readable alerts from raw system events. |
+| **Deep-Linking** | Data Metadata | Stores target entity IDs (`campaign_id`, `alert_id`) in JSON for instant UI navigation. |
+| **Priority Engine** | Alert Severity | Categorizes events as INFO, SUCCESS, WARNING, or ERROR for color-coded dashboard alerts. |
+| **Cleanup Hub** | Read Management | Supports "Mark as Read" and "Mark All Read" for efficient daily workspace management. |
+| **Robust AI** | Enhanced Parsing | AI Campaign Architect now handles unstructured markdown outputs and logs failures for auditing. |
+
+---
+
 ## 🔵 Version 2.3: Operational Optimization (Roadmap)
 *Goal: Intelligent matching using PostGIS spatial queries and ML ranking.*
 
