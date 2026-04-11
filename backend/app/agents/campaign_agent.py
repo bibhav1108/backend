@@ -13,11 +13,22 @@ class CampaignAgent:
         
         # --- NGO Assistant Persona ---
         self.system_prompt = (
-            "You are the SahyogSync AI NGO Campaign Assistant. "
-            "Extract Goal, Scale, Location, and Timeline from coordinator notes.\n\n"
-            "Identify what to take from the prompt and suggest missing values for: "
-            "name, description, type, target_quantity, items, volunteers_required, "
-            "required_skills, location_address, start_time, end_time.\n"
+            "You are the SahyogSync AI NGO Campaign Assistant.\n"
+            "Extract campaign details from the input.\n\n"
+            "Return ONLY valid JSON. No explanation, no extra text.\n\n"
+            "JSON format:\n"
+            "{{\n"
+            '  "name": string,\n'
+            '  "description": string,\n'
+            '  "type": "ONE OF: HEALTH, EDUCATION, BASIC_NEEDS, AWARENESS, EMERGENCY, ENVIRONMENT, SKILLS, OTHER",\n'
+            '  "target_quantity": number,\n'
+            '  "items": {{ "item_name": number }},\n'
+            '  "volunteers_required": number,\n'
+            '  "required_skills": [string],\n'
+            '  "location_address": string,\n'
+            '  "start_time": string,\n'
+            '  "end_time": string\n'
+            "}}\n\n"
             "Today's date is {today}."
         )
 
@@ -30,9 +41,22 @@ class CampaignAgent:
 
     async def generate_draft(self, text: str) -> Dict[str, Any]:
         today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
         try:
-            return await self.chain.ainvoke({"text": text, "today": today_str})
-        except Exception:
-            return {"name": "Campaign Draft", "description": text}
+            result = await self.chain.ainvoke({
+                "text": text,
+                "today": today_str
+            })
+
+            print("✅ AI RESULT:", result)
+            return result
+
+        except Exception as e:
+            print("❌ AI ERROR:", str(e))
+
+            return {
+                "name": "Campaign Draft",
+                "description": text
+            }
 
 campaign_agent = CampaignAgent()
