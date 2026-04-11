@@ -162,12 +162,12 @@ async def reset_password(
     if not user or user.password_reset_otp != data.otp:
         raise HTTPException(status_code=400, detail="Invalid OTP or Email")
 
-    if user.otp_expires_at < datetime.now(timezone.utc):
+    if user.otp_expires_at < datetime.utcnow():
         raise HTTPException(status_code=400, detail="OTP has expired")
 
     user.hashed_password = get_password_hash(data.new_password)
     user.password_reset_otp = None
-    user.otp_expires_at = None
+    user.otp_expires_at = datetime.utcnow() + timedelta(minutes=10)
 
     await db.commit()
 
