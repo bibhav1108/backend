@@ -42,27 +42,19 @@ class EmailService:
 
     async def send_verification_email(self, user: User, token: str):
         """Sends a verification link to the user's email."""
-        # Verification link points back to the Backend API (which redirects to Frontend)
         verify_url = f"{settings.BACKEND_URL}/api/v1/auth/verify-email?token={token}"
         
         subject = f"Verify your {settings.EMAILS_FROM_NAME} Account"
         html = f"""
         <html>
-            <body>
-                <h2>Welcome to SahyogSync! 🌟</h2>
-                <p>Hello {user.full_name or 'there'},</p>
-                <p>Thank you for joining our mission. Please verify your email address to activate your account features and build trust in our network.</p>
-                <div style="margin: 20px 0;">
-                    <a href="{verify_url}" 
-                       style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-                       Verify Email Address
-                    </a>
-                </div>
-                <p>If the button doesn't work, copy and paste this link into your browser:</p>
-                <p>{verify_url}</p>
-                <p>This link will expire in 24 hours.</p>
-                <hr>
-                <p>If you did not request this, please ignore this email.</p>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <p>Hello,</p>
+                <p>Thank you for registering with us.</p>
+                <p>To complete your registration, please verify your email address by clicking the link below:</p>
+                <p><a href="{verify_url}" style="color: #007bff; text-decoration: none;">{verify_url}</a></p>
+                <p>This link will expire in 15 minutes for security reasons.</p>
+                <p>If you did not create this account, please ignore this email.</p>
+                <p>Best regards,<br>Team Support</p>
             </body>
         </html>
         """
@@ -73,17 +65,14 @@ class EmailService:
         subject = f"Password Reset Code - {settings.EMAILS_FROM_NAME}"
         html = f"""
         <html>
-            <body>
-                <h2>Password Reset Request 🔐</h2>
-                <p>Hello {user.full_name or 'there'},</p>
-                <p>You requested a password reset. Use the following 6-digit code to set a new password:</p>
-                <div style="font-size: 24px; font-weight: bold; padding: 10px; background-color: #f4f4f4; border-radius: 5px; display: inline-block;">
-                    {otp}
-                </div>
-                <p>This code is valid for 10 minutes.</p>
-                <p>If you did not request this, please change your security settings immediately.</p>
-                <hr>
-                <p>Safe volunteering!</p>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <p>Hello,</p>
+                <p>We received a request to reset your password.</p>
+                <p>Use the One-Time Password (OTP) below to proceed:</p>
+                <p style="font-size: 18px; font-weight: bold;">🔐 OTP: {otp}</p>
+                <p>This code is valid for the next 10 minutes.</p>
+                <p>If you did not request a password reset, please ignore this email. Your account remains secure.</p>
+                <p>Best regards,<br>Support Team</p>
             </body>
         </html>
         """
