@@ -42,7 +42,7 @@ class EmailService:
 
     async def send_verification_email(self, user: User, token: str):
         """Sends a verification link to the user's email."""
-        verify_url = f"{settings.BACKEND_URL}/api/v1/auth/verify-email?token={token}"
+        verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token}"
         
         subject = f"Verify your {settings.EMAILS_FROM_NAME} Account"
         html = f"""
