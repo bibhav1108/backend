@@ -115,6 +115,8 @@ class User(Base):
     password_reset_otp: Mapped[Optional[str]] = mapped_column(nullable=True)
     otp_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     
+    profile_image_url: Mapped[str] = mapped_column(default="/static/default_pfp.jpg")
+    
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     organization: Mapped["Organization"] = relationship(back_populates="users")

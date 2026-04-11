@@ -49,6 +49,7 @@ class VolunteerProfileResponse(BaseModel):
     zone: Optional[str]
     completions: int
     hours_served: float
+    profile_image_url: Optional[str] = None
 
     class Config:
         from_attributes = True

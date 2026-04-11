@@ -34,7 +34,8 @@ async def get_profile(
         skills=v.skills,
         zone=v.zone,
         completions=v.stats.completions if v.stats else 0,
-        hours_served=v.stats.hours_served if v.stats else 0.0
+        hours_served=v.stats.hours_served if v.stats else 0.0,
+        profile_image_url=current_user.profile_image_url
     )
 
 @router.patch("/me", response_model=VolunteerProfileResponse)
@@ -80,5 +81,6 @@ async def update_profile(
         skills=v.skills,
         zone=v.zone,
         completions=v.stats.completions if v.stats else 0,
-        hours_served=v.stats.hours_served if v.stats else 0.0
+        hours_served=v.stats.hours_served if v.stats else 0.0,
+        profile_image_url=current_user.profile_image_url
     )
