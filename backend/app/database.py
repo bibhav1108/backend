@@ -223,6 +223,7 @@ async def run_migrations():
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token VARCHAR;"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_otp VARCHAR;"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP;"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url VARCHAR DEFAULT '/static/default_pfp.jpg';"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_verification_token ON users (verification_token);"))
 
         # Ensure Campaign Columns (Support V2.1 AI Architect and Detailed Mission Specs)
