@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy import text
 from backend.app.database import engine, Base, run_migrations
 from backend.app.api.v1.endpoints.webhooks import router as webhooks_router
-from backend.app.api.v1.endpoints.volunteers import router as volunteers_router
+from backend.app.volunteers.router import router as volunteers_router
 from backend.app.api.v1.endpoints.marketplace import router as marketplace_router
 from backend.app.api.v1.endpoints.marketplace_dispatches import router as m_dispatches_router
 from backend.app.services.telegram_service import telegram_service
@@ -25,7 +25,6 @@ from backend.app.api.v1.endpoints.meta import router as meta_router
 from backend.app.api.v1.endpoints.campaigns import router as campaigns_router
 from backend.app.api.v1.endpoints.marketplace_inventory import router as m_inventory_router
 from backend.app.notifications.router import router as notifications_router
-from backend.app.api.v1.endpoints.volunteer_profile import router as vol_profile_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -83,7 +82,6 @@ app.include_router(inventory_router, prefix="/api/v1/inventory", tags=["inventor
 app.include_router(campaigns_router, prefix="/api/v1/campaigns", tags=["campaigns"])
 app.include_router(m_inventory_router, prefix="/api/v1/marketplace/inventory", tags=["marketplace"])
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
-app.include_router(vol_profile_router, prefix="/api/v1/volunteers/profile", tags=["volunteers"])
 
 @app.get("/")
 async def root():

@@ -1,41 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from backend.app.database import get_db
-from backend.app.models import Volunteer, Organization, VolunteerStats, TrustTier, User, UserRole
-from backend.app.api.deps import get_current_user
-from pydantic import BaseModel, Field
 from typing import List, Optional
+from backend.app.database import get_db
+from backend.app.models import Volunteer, VolunteerStats, User, UserRole, TrustTier
+from backend.app.api.deps import get_current_user
+from .schemas import VolunteerCreate, VolunteerResponse, TrustUpdate
 
-# --- Pydantic Schemas ---
-class VolunteerCreate(BaseModel):
-    name: str = Field(..., example="Rohit Sharma")
-    phone_number: str = Field(..., example="+919876543210")
-    zone: Optional[str] = Field(None, example="Lucknow East")
-    skills: Optional[List[str]] = Field(default=[], example=["food", "logistics"])
-
-class VolunteerResponse(BaseModel):
-    id: int
-    name: str
-    phone_number: str
-    telegram_active: bool
-    telegram_chat_id: Optional[str] = None
-    org_id: int
-    trust_tier: TrustTier
-    trust_score: int = 0
-    id_verified: bool = False
-    
-    # Stats integrated for Dashboard view
-    completions: int = 0
-    no_shows: int = 0
-
-    class Config:
-        from_attributes = True
-
-class TrustUpdate(BaseModel):
-    trust_tier: TrustTier
-
-# --- Router ---
 router = APIRouter()
 
 @router.get("/", response_model=List[VolunteerResponse])
@@ -44,11 +15,7 @@ async def list_volunteers(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    List volunteers registered to the current NGO.
-    Includes completions and no-show stats.
-    """
-    # Join with Stats to get the counters (LEFT JOIN to ensure visibility even if stats missing)
+    """List volunteers registered to the current NGO."""
     stmt = (
         select(Volunteer, VolunteerStats.completions, VolunteerStats.no_shows)
         .outerjoin(VolunteerStats, Volunteer.id == VolunteerStats.volunteer_id)
@@ -63,7 +30,6 @@ async def list_volunteers(
     vols = []
     for row in result:
         v, comp, noshow = row
-        # Map to Response model manually because of the join
         resp = VolunteerResponse.model_validate(v)
         resp.completions = comp or 0
         resp.no_shows = noshow or 0
@@ -78,16 +44,11 @@ async def register_volunteer(
     current_user: User = Depends(get_current_user)
 ):
     """Register a new volunteer for the current NGO."""
-    # 1. Check duplicate phone
     phone_stmt = select(Volunteer).where(Volunteer.phone_number == data.phone_number)
     phone_result = await db.execute(phone_stmt)
     if phone_result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Volunteer with this phone number already registered"
-        )
+        raise HTTPException(status_code=400, detail="Volunteer with this phone number already registered")
 
-    # 2. Create Volunteer
     volunteer = Volunteer(
         org_id=current_user.org_id,
         name=data.name,
@@ -99,14 +60,12 @@ async def register_volunteer(
     db.add(volunteer)
     await db.flush()
 
-    # 3. Initialize Stats
     stats = VolunteerStats(volunteer_id=volunteer.id)
     db.add(stats)
 
     await db.commit()
     await db.refresh(volunteer)
     
-    # Return with default 0 stats
     resp = VolunteerResponse.model_validate(volunteer)
     resp.completions = 0
     resp.no_shows = 0
@@ -120,15 +79,11 @@ async def update_trust_tier(
     current_user: User = Depends(get_current_user)
 ):
     """Update a volunteer's trust tier (Coordinator only)."""
-    stmt = select(Volunteer).where(
-        Volunteer.id == vol_id, 
-        Volunteer.org_id == current_user.org_id
-    )
-    result = await db.execute(stmt)
-    volunteer = result.scalar_one_or_none()
+    stmt = select(Volunteer).where(Volunteer.id == vol_id, Volunteer.org_id == current_user.org_id)
+    volunteer = (await db.execute(stmt)).scalar_one_or_none()
     
     if not volunteer:
-        raise HTTPException(status_code=404, detail="Volunteer not found in your organization")
+        raise HTTPException(status_code=404, detail="Volunteer not found")
 
     volunteer.trust_tier = data.trust_tier
     await db.commit()
@@ -141,10 +96,7 @@ async def verify_volunteer_id(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    NGO Admin manually verifies a volunteer's identity.
-    Bumps status to ID_VERIFIED and increases Trust Score.
-    """
+    """NGO Admin manually verifies a volunteer's identity."""
     if current_user.role not in [UserRole.NGO_ADMIN, UserRole.NGO_COORDINATOR]:
         raise HTTPException(status_code=403, detail="Only admins can verify identity")
         
@@ -156,7 +108,7 @@ async def verify_volunteer_id(
 
     v.id_verified = True
     v.trust_tier = TrustTier.ID_VERIFIED
-    v.trust_score += 50 # Significant trust bump for ID verification
+    v.trust_score += 50
     
     await db.commit()
     await db.refresh(v)
