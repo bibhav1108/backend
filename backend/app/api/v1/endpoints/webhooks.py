@@ -22,12 +22,16 @@ from backend.app.models import (
     CampaignParticipationStatus,
     CampaignStatus,
     MarketplaceInventory,
-    InboundMessage
+    InboundMessage,
+    User,
+    UserRole
 )
-from backend.app.services.otp import generate_otp_pair, verify_otp
+from backend.app.services.auth_utils import generate_otp_pair, verify_otp, get_password_hash
 from backend.app.services.telegram_service import telegram_service
 from backend.app.services.ai_service import ai_service
 from backend.app.notifications.service import notification_service
+import random
+import string
 
 router = APIRouter()
 
@@ -463,7 +467,33 @@ async def telegram_webhook(
             v = (await db.execute(stmt_check)).scalar_one_or_none()
             
             if v:
-                # MATCH FOUND: Activate the dashboard record
+                # 1. MATCH FOUND: Prepare Credentials
+                first_name = v.name.split()[0].lower()
+                clean_phone = norm_phone[-4:] # Use last 4 digits
+                
+                # Rule: first_name + last 4 digits of number
+                username = f"{first_name}{clean_phone}"
+                
+                # Rule: firstname + @ + random 3 numbers
+                random_digits = "".join(random.choices(string.digits, k=3))
+                raw_password = f"{first_name}@{random_digits}"
+                
+                # 2. Check if User already exists (idempotency)
+                if not v.user_id:
+                    # Create auth account
+                    new_user = User(
+                        org_id=v.org_id,
+                        username=username,
+                        hashed_password=get_password_hash(raw_password),
+                        full_name=v.name,
+                        role=UserRole.VOLUNTEER,
+                        is_active=True
+                    )
+                    db.add(new_user)
+                    await db.flush()
+                    v.user_id = new_user.id
+                
+                # 3. Activate Volunteer
                 v.telegram_chat_id = chat_id
                 v.telegram_active = True
                 
@@ -474,7 +504,16 @@ async def telegram_webhook(
                     db.add(VolunteerStats(volunteer_id=v.id))
 
                 await db.commit()
-                await send_and_log(bg=background_tasks, chat_id=chat_id, text=f"🎉 *Verification Successful!*\n\nWelcome back, *{v.name}*. You are now authorized to receive mission alerts for your NGO! 🚀")
+                
+                # 4. Secure Credential Delivery
+                welcome_msg = (
+                    f"🎉 *Verification Successful!*\n\n"
+                    f"Welcome to the team, *{v.name}*! Your account has been activated.\n\n"
+                    f"👤 *Username*: `{username}`\n"
+                    f"🔐 *Password*: `{raw_password}`\n\n"
+                    f"Keep these credentials safe. You will need them to log in to the SahyogSync volunteer portal. 🚀"
+                )
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text=welcome_msg)
                 return {"status": "verified"}
             else:
                 # NO MATCH: Reject as per user logic

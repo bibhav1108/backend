@@ -26,8 +26,10 @@ async def login(
     Verifies email (username) and password.
     Returns JWT token and Org context.
     """
-    # 1. Lookup User
-    stmt = select(User).where(User.email == form_data.username)
+    # 1. Lookup User (Email or Username)
+    stmt = select(User).where(
+        (User.email == form_data.username) | (User.username == form_data.username)
+    )
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
 
@@ -35,7 +37,7 @@ async def login(
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Incorrect username/email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -45,8 +47,10 @@ async def login(
     org = org_result.scalar_one_or_none()
 
     # 4. Create Token
+    # Use email if available, else username for 'sub'
+    sub_val = user.email or user.username
     access_token = create_access_token(
-        data={"sub": user.email, "org_id": user.org_id}
+        data={"sub": sub_val, "org_id": user.org_id, "role": user.role}
     )
     
     return {

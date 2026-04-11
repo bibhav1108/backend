@@ -59,6 +59,11 @@ class CampaignParticipationStatus(str, enum.Enum):
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
 
+class UserRole(str, enum.Enum):
+    NGO_ADMIN = "NGO_ADMIN"
+    NGO_COORDINATOR = "NGO_COORDINATOR"
+    VOLUNTEER = "VOLUNTEER"
+
 class NotificationType(str, enum.Enum):
     DONOR_ALERT = "DONOR_ALERT"           # New report from bot
     MISSION_ACCEPTED = "MISSION_ACCEPTED" # Volunteer claimed a mission
@@ -95,9 +100,11 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
-    email: Mapped[str] = mapped_column(unique=True, index=True)
+    email: Mapped[Optional[str]] = mapped_column(unique=True, index=True, nullable=True)
+    username: Mapped[Optional[str]] = mapped_column(unique=True, index=True, nullable=True)
     hashed_password: Mapped[str] = mapped_column()
     full_name: Mapped[Optional[str]] = mapped_column(nullable=True)
+    role: Mapped[UserRole] = mapped_column(SQLEnum(UserRole), default=UserRole.NGO_COORDINATOR)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
@@ -108,12 +115,16 @@ class Volunteer(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     name: Mapped[str] = mapped_column()
     phone_number: Mapped[str] = mapped_column(unique=True, index=True)
     telegram_chat_id: Mapped[Optional[str]] = mapped_column(unique=True, index=True, nullable=True)
-    telegram_active: Mapped[bool] = mapped_column(default=False)
+    telegram_active: Mapped[bool] = mapped_column(default=False) # Master activation switch
     
     trust_tier: Mapped[TrustTier] = mapped_column(SQLEnum(TrustTier), default=TrustTier.UNVERIFIED)
+    trust_score: Mapped[int] = mapped_column(default=0)
+    id_verified: Mapped[bool] = mapped_column(default=False)
+    
     skills: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
     zone: Mapped[Optional[str]] = mapped_column(nullable=True)
     

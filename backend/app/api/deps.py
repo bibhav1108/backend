@@ -26,13 +26,15 @@ async def get_current_user(
     )
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
+        sub_id: str = payload.get("sub")
+        if sub_id is None:
             raise credentials_exception
     except JWTError:
         raise credentials_exception
         
-    stmt = select(User).where(User.email == email).options(selectinload(User.organization))
+    stmt = select(User).where(
+        (User.email == sub_id) | (User.username == sub_id)
+    ).options(selectinload(User.organization))
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
     
@@ -48,11 +50,13 @@ async def get_current_user_optional(
         return None
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        email: str = payload.get("sub")
-        if email is None:
+        sub_id: str = payload.get("sub")
+        if sub_id is None:
             return None
         
-        stmt = select(User).where(User.email == email).options(selectinload(User.organization))
+        stmt = select(User).where(
+            (User.email == sub_id) | (User.username == sub_id)
+        ).options(selectinload(User.organization))
         result = await db.execute(stmt)
         return result.scalar_one_or_none()
     except JWTError:

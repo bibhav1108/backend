@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.app.database import get_db
-from backend.app.models import Organization, User
+from backend.app.models import Organization, User, UserRole
 from backend.app.services.auth_utils import get_password_hash
 from backend.app.api.deps import get_current_user
 from pydantic import BaseModel, EmailStr, Field
@@ -87,7 +87,8 @@ async def register_ngo(
             org_id=new_org.id,
             email=data.admin_email,
             hashed_password=get_password_hash(data.admin_password),
-            full_name=data.admin_name
+            full_name=data.admin_name,
+            role=UserRole.NGO_ADMIN
         )
         db.add(new_user)
         

@@ -67,7 +67,8 @@ async def run_migrations():
             'needtype': ['FOOD', 'WATER', 'KIT', 'BLANKET', 'MEDICAL', 'VEHICLE', 'OTHER'],
             'trusttier': ['UNVERIFIED', 'ID_VERIFIED', 'FIELD_VERIFIED'],
             'urgency': ['LOW', 'MEDIUM', 'HIGH'],
-            'notificationtype': ['DONOR_ALERT', 'MISSION_ACCEPTED', 'MISSION_COMPLETED', 'MISSION_CANCELLED', 'CAMPAIGN_INTEREST', 'SYSTEM']
+            'notificationtype': ['DONOR_ALERT', 'MISSION_ACCEPTED', 'MISSION_COMPLETED', 'MISSION_CANCELLED', 'CAMPAIGN_INTEREST', 'SYSTEM'],
+            'userrole': ['NGO_ADMIN', 'NGO_COORDINATOR', 'VOLUNTEER']
         }
         
         for type_name, vals in types_map.items():
@@ -208,8 +209,16 @@ async def run_migrations():
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS telegram_chat_id VARCHAR;"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS telegram_active BOOLEAN DEFAULT FALSE;"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS trust_tier trusttier DEFAULT 'UNVERIFIED';"))
+        await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS trust_score INTEGER DEFAULT 0;"))
+        await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS id_verified BOOLEAN DEFAULT FALSE;"))
+        await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id);"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS skills JSON;"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS location geometry(POINT, 4326);"))
+
+        # User Extension: Support Volunteers and Roles
+        await conn.execute(text("ALTER TABLE users ALTER COLUMN email DROP NOT NULL;"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR UNIQUE;"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role userrole DEFAULT 'NGO_COORDINATOR';"))
 
         # Ensure Campaign Columns (Support V2.1 AI Architect and Detailed Mission Specs)
         await conn.execute(text("ALTER TABLE IF EXISTS ngo_campaigns ADD COLUMN IF NOT EXISTS type campaigntype DEFAULT 'OTHER';"))

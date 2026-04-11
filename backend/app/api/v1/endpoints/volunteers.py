@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.app.database import get_db
-from backend.app.models import Volunteer, Organization, VolunteerStats, TrustTier, User
+from backend.app.models import Volunteer, Organization, VolunteerStats, TrustTier, User, UserRole
 from backend.app.api.deps import get_current_user
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -22,6 +22,8 @@ class VolunteerResponse(BaseModel):
     telegram_chat_id: Optional[str] = None
     org_id: int
     trust_tier: TrustTier
+    trust_score: int = 0
+    id_verified: bool = False
     
     # Stats integrated for Dashboard view
     completions: int = 0
@@ -132,3 +134,30 @@ async def update_trust_tier(
     await db.commit()
     await db.refresh(volunteer)
     return volunteer
+
+@router.post("/{vol_id}/verify-id", response_model=VolunteerResponse)
+async def verify_volunteer_id(
+    vol_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    NGO Admin manually verifies a volunteer's identity.
+    Bumps status to ID_VERIFIED and increases Trust Score.
+    """
+    if current_user.role not in [UserRole.NGO_ADMIN, UserRole.NGO_COORDINATOR]:
+        raise HTTPException(status_code=403, detail="Only admins can verify identity")
+        
+    stmt = select(Volunteer).where(Volunteer.id == vol_id, Volunteer.org_id == current_user.org_id)
+    v = (await db.execute(stmt)).scalar_one_or_none()
+    
+    if not v:
+        raise HTTPException(status_code=404, detail="Volunteer not found")
+
+    v.id_verified = True
+    v.trust_tier = TrustTier.ID_VERIFIED
+    v.trust_score += 50 # Significant trust bump for ID verification
+    
+    await db.commit()
+    await db.refresh(v)
+    return v
