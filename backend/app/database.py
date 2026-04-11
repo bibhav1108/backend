@@ -66,7 +66,8 @@ async def run_migrations():
             'campaigntype': ['HEALTH', 'EDUCATION', 'BASIC_NEEDS', 'AWARENESS', 'EMERGENCY', 'ENVIRONMENT', 'SKILLS', 'OTHER'],
             'needtype': ['FOOD', 'WATER', 'KIT', 'BLANKET', 'MEDICAL', 'VEHICLE', 'OTHER'],
             'trusttier': ['UNVERIFIED', 'ID_VERIFIED', 'FIELD_VERIFIED'],
-            'urgency': ['LOW', 'MEDIUM', 'HIGH']
+            'urgency': ['LOW', 'MEDIUM', 'HIGH'],
+            'notificationtype': ['DONOR_ALERT', 'MISSION_ACCEPTED', 'MISSION_COMPLETED', 'MISSION_CANCELLED', 'CAMPAIGN_INTEREST', 'SYSTEM']
         }
         
         for type_name, vals in types_map.items():
@@ -184,6 +185,23 @@ async def run_migrations():
                 notes TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+        """))
+
+        # Create Notifications Table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                id SERIAL PRIMARY KEY,
+                org_id INTEGER REFERENCES organizations(id),
+                type notificationtype NOT NULL,
+                title VARCHAR NOT NULL,
+                message TEXT NOT NULL,
+                priority VARCHAR DEFAULT 'INFO',
+                is_read BOOLEAN DEFAULT FALSE,
+                data JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS ix_notifications_org_id ON notifications (org_id);
+            CREATE INDEX IF NOT EXISTS ix_notifications_is_read ON notifications (is_read);
         """))
 
         # Ensure Column Consistency for Volunteers (V1.5+)

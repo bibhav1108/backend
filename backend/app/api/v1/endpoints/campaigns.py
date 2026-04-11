@@ -12,6 +12,8 @@ from backend.app.models import (
 from backend.app.api.deps import get_current_user
 from backend.app.services.telegram_service import telegram_service
 from backend.app.agents.campaign_agent import campaign_agent
+from backend.app.notifications.service import notification_service
+from backend.app.models import NotificationType
 from typing import List, Optional, Any
 from pydantic import BaseModel
 from datetime import datetime, timezone
@@ -265,6 +267,16 @@ async def volunteer_opt_in(
         await telegram_service.send_message(volunteer.telegram_chat_id, msg)
 
     await db.commit()
+
+    # --- Notification Center: Campaign Interest ---
+    await notification_service.notify_campaign_interest(
+        db=db,
+        org_id=volunteer.org_id,
+        volunteer_name=volunteer.name,
+        campaign_name=campaign.name,
+        campaign_id=campaign.id
+    )
+
     return {"status": "success", "message": "You have expressed interest! Awaiting NGO confirmation."}
 
 @router.post("/{campaign_id}/reject")
@@ -295,6 +307,25 @@ async def volunteer_reject(
         db.add(participation)
         
     await db.commit()
+
+    # --- Notification Center: Campaign Reject ---
+    # Fetch volunteer and campaign for metadata
+    v_stmt = select(Volunteer).where(Volunteer.id == vol_id)
+    v = (await db.execute(v_stmt)).scalar_one_or_none()
+    c_stmt = select(Campaign).where(Campaign.id == campaign_id)
+    c = (await db.execute(c_stmt)).scalar_one_or_none()
+
+    if v and c:
+        await notification_service.create_notification(
+            db=db,
+            org_id=v.org_id,
+            notification_type=NotificationType.MISSION_CANCELLED,
+            title="🚫 Campaign Declined",
+            message=f"Volunteer {v.name} declined to join '{c.name}'.",
+            priority="WARNING",
+            data={"campaign_id": c.id, "volunteer_name": v.name}
+        )
+
     return {"status": "success", "message": "Mission declined."}
 
 @router.get("/{campaign_id}/pool", response_model=List[ParticipantResponse])

@@ -27,6 +27,7 @@ from backend.app.models import (
 from backend.app.services.otp import generate_otp_pair, verify_otp
 from backend.app.services.telegram_service import telegram_service
 from backend.app.services.ai_service import ai_service
+from backend.app.notifications.service import notification_service
 
 router = APIRouter()
 
@@ -313,6 +314,15 @@ async def telegram_webhook(
                         text=f"🎫 *Mission Accepted!*\n\nYour Pickup CODE is: `{raw_code}`\n\nShow this code to the donor upon collection. Thank you for your service! 🤝"
                     )
 
+                    # --- Notification Center: Mission Accepted ---
+                    await notification_service.notify_mission_accepted(
+                        db=db,
+                        org_id=volunteer.org_id,
+                        volunteer_name=volunteer.name,
+                        mission_name=dispatch.marketplace_need.type.name,
+                        dispatch_id=dispatch.id
+                    )
+
                     # --- Notify Donor ---
                     try:
                         # Fetch donor chat_id via Alert
@@ -389,6 +399,14 @@ async def telegram_webhook(
                     alert.is_processed = False
                     await db.commit()
                     await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *Report Verified!* Your donation is now live and waiting for a hero. ✨🤝")
+                    
+                    # --- Notification Center: New Donor Alert ---
+                    await notification_service.notify_donor_alert(
+                        db=db,
+                        alert_id=alert.id,
+                        item=alert.item or "Potential Surplus",
+                        location=alert.location or "See contacts"
+                    )
 
             if data_payload.startswith("ai_edit_"):
                 alert_id = int(data_payload.split("_")[2])
@@ -722,6 +740,13 @@ async def telegram_webhook(
                         
                         await db.commit()
                         print(f"[TRACE] Mission {dispatch.id} COMPLETED via Donor OTP.")
+                        
+                        # --- Notification Center: Mission Completed ---
+                        await notification_service.notify_mission_completed(
+                            db=db,
+                            org_id=need.org_id,
+                            mission_name=need.type.name
+                        )
                         
                         # Feedback to Donor
                         impact_msg = (

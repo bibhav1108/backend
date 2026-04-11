@@ -1,4 +1,4 @@
-﻿from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Enum as SQLEnum, JSON, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Enum as SQLEnum, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from geoalchemy2 import Geometry
 from backend.app.database import Base
@@ -58,6 +58,14 @@ class CampaignParticipationStatus(str, enum.Enum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
+
+class NotificationType(str, enum.Enum):
+    DONOR_ALERT = "DONOR_ALERT"           # New report from bot
+    MISSION_ACCEPTED = "MISSION_ACCEPTED" # Volunteer claimed a mission
+    MISSION_COMPLETED = "MISSION_COMPLETED" # OTP Verified
+    MISSION_CANCELLED = "MISSION_CANCELLED" # Volunteer cancelled
+    CAMPAIGN_INTEREST = "CAMPAIGN_INTEREST" # Volunteer opted-in
+    SYSTEM = "SYSTEM"                      # General broadcast
 
 # --- Models ---
 
@@ -273,7 +281,7 @@ class InboundMessage(Base):
 
     __table_args__ = (UniqueConstraint('chat_id', 'message_id', name='_chat_message_uc'),)
 
-class AuditTrail(Base):
+class AuditTrail(Base) :
     __tablename__ = "audit_events"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
@@ -283,3 +291,21 @@ class AuditTrail(Base):
     target_id: Mapped[Optional[str]] = mapped_column(nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    org_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id"), nullable=True)
+    
+    type: Mapped[NotificationType] = mapped_column(SQLEnum(NotificationType))
+    title: Mapped[str] = mapped_column()
+    message: Mapped[str] = mapped_column()
+    priority: Mapped[str] = mapped_column(default="INFO") # INFO, SUCCESS, WARNING, ERROR
+    
+    is_read: Mapped[bool] = mapped_column(default=False)
+    data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True) # {"alert_id": 1, "campaign_id": 2}
+    
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
+    organization: Mapped["Organization"] = relationship()

@@ -43,20 +43,32 @@ class CampaignAgent:
         today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
         try:
-            result = await self.chain.ainvoke({
-                "text": text,
-                "today": today_str
-            })
-
-            print("✅ AI RESULT:", result)
+            # 1. Get raw response from model
+            res = await self.model.ainvoke(
+                self.prompt.format_messages(text=text, today=today_str)
+            )
+            raw_text = res.content
+            
+            # 2. Extract JSON (Handle potential Markdown fences)
+            clean_json = raw_text
+            if "```json" in raw_text:
+                clean_json = raw_text.split("```json")[-1].split("```")[0].strip()
+            elif "```" in raw_text:
+                clean_json = raw_text.split("```")[-1].split("```")[0].strip()
+            
+            # 3. Parse and Return
+            result = json.loads(clean_json)
+            print("AI RESULT (Parsed):", result)
             return result
 
         except Exception as e:
-            print("❌ AI ERROR:", str(e))
+            print("AI ERROR (Raw Output):", raw_text if 'raw_text' in locals() else "None")
+            print("AI PARSE FAILED:", str(e))
 
             return {
                 "name": "Campaign Draft",
-                "description": text
+                "description": text,
+                "note": "Plan B: Manual Drafting Required (AI Parsing Failed)"
             }
 
 campaign_agent = CampaignAgent()

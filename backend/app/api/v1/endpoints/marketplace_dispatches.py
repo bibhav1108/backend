@@ -15,6 +15,7 @@ from backend.app.models import (
 from backend.app.api.deps import get_current_user
 from backend.app.services.otp import verify_otp
 from backend.app.services.telegram_service import telegram_service
+from backend.app.notifications.service import notification_service
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -201,6 +202,13 @@ async def verify_marketplace_otp(
     stats.completions += 1
 
     await db.commit()
+
+    # --- Notification Center: Mission Completed (Manual OTP) ---
+    await notification_service.notify_mission_completed(
+        db=db,
+        org_id=current_user.org_id,
+        mission_name=need.type.name
+    )
 
     return {"status": "success", "message": "OTP verified. Recovery logged in MarketplaceInventory."}
 
