@@ -106,6 +106,15 @@ class User(Base):
     full_name: Mapped[Optional[str]] = mapped_column(nullable=True)
     role: Mapped[UserRole] = mapped_column(SQLEnum(UserRole), default=UserRole.NGO_COORDINATOR)
     is_active: Mapped[bool] = mapped_column(default=True)
+    
+    # Email Verification
+    is_email_verified: Mapped[bool] = mapped_column(default=False)
+    verification_token: Mapped[Optional[str]] = mapped_column(index=True, nullable=True)
+    
+    # Password Reset (OTP)
+    password_reset_otp: Mapped[Optional[str]] = mapped_column(nullable=True)
+    otp_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     organization: Mapped["Organization"] = relationship(back_populates="users")

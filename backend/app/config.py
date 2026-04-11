@@ -23,6 +23,15 @@ class Settings(BaseSettings):
     # CORS & Web Linking
     ALLOWED_ORIGINS: Union[List[str], str] = ["https://sahyog-setu-frontend.vercel.app", "http://localhost:3000"]
     FRONTEND_URL: str = "https://sahyog-setu-frontend.vercel.app"
+    BACKEND_URL: str = "http://localhost:8000" # fallback
+
+    # SMTP Settings (Email/OTP)
+    SMTP_HOST: Optional[str] = "smtp.gmail.com"
+    SMTP_PORT: Optional[int] = 587
+    SMTP_USER: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    EMAILS_FROM_EMAIL: Optional[str] = None
+    EMAILS_FROM_NAME: str = "SahyogSync"
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod

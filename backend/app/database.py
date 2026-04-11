@@ -215,10 +215,15 @@ async def run_migrations():
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS skills JSON;"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS location geometry(POINT, 4326);"))
 
-        # User Extension: Support Volunteers and Roles
+        # User Extension: Support Volunteers, Roles, and Email Verification
         await conn.execute(text("ALTER TABLE users ALTER COLUMN email DROP NOT NULL;"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR UNIQUE;"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role userrole DEFAULT 'NGO_COORDINATOR';"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_email_verified BOOLEAN DEFAULT FALSE;"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token VARCHAR;"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_otp VARCHAR;"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP;"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_verification_token ON users (verification_token);"))
 
         # Ensure Campaign Columns (Support V2.1 AI Architect and Detailed Mission Specs)
         await conn.execute(text("ALTER TABLE IF EXISTS ngo_campaigns ADD COLUMN IF NOT EXISTS type campaigntype DEFAULT 'OTHER';"))

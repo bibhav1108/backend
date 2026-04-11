@@ -21,6 +21,8 @@ from backend.app.api.v1.endpoints.auth import router as auth_router
 from backend.app.api.v1.endpoints.inventory import router as inventory_router
 from backend.app.api.v1.endpoints.organizations import router as organizations_router
 from backend.app.api.v1.endpoints.users import router as users_router
+from backend.app.api.v1.endpoints.meta import router as meta_router
+from backend.app.api.v1.endpoints.campaigns import router as campaigns_router
 from backend.app.api.v1.endpoints.marketplace_inventory import router as m_inventory_router
 from backend.app.notifications.router import router as notifications_router
 from backend.app.api.v1.endpoints.volunteer_profile import router as vol_profile_router

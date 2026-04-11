@@ -5,8 +5,11 @@ from sqlalchemy.orm import selectinload
 from backend.app.database import get_db
 from backend.app.models import Volunteer, VolunteerStats, User, UserRole, TrustTier
 from backend.app.api.deps import get_current_user
-from pydantic import BaseModel
-from typing import List, Optional
+from backend.app.services.email_service import email_service
+from pydantic import BaseModel, EmailStr
+import uuid
+import random
+import string
 from datetime import datetime
 
 router = APIRouter()
@@ -14,15 +17,17 @@ router = APIRouter()
 # --- Pydantic Schemas ---
 class VolunteerProfileUpdate(BaseModel):
     name: Optional[str] = None
+    email: Optional[EmailStr] = None
     skills: Optional[List[str]] = None
     zone: Optional[str] = None
-    # Add more fields as needed for "Build Trust" phase
 
 class VolunteerProfileResponse(BaseModel):
     id: int
     name: str
     phone_number: str
+    email: Optional[str]
     is_active: bool
+    is_email_verified: bool
     trust_tier: TrustTier
     trust_score: int
     id_verified: bool
@@ -67,7 +72,9 @@ async def get_profile(
         id=v.id,
         name=v.name,
         phone_number=v.phone_number,
+        email=current_user.email,
         is_active=v.telegram_active,
+        is_email_verified=current_user.is_email_verified,
         trust_tier=v.trust_tier,
         trust_score=v.trust_score,
         id_verified=v.id_verified,
@@ -94,6 +101,18 @@ async def update_profile(
     if data.name: v.name = data.name
     if data.skills is not None: v.skills = data.skills
     if data.zone: v.zone = data.zone
+
+    # --- Email Verification Flow ---
+    if data.email and data.email != current_user.email:
+        current_user.email = data.email
+        current_user.is_email_verified = False
+        
+        # Generate Verification Token
+        token = str(uuid.uuid4())
+        current_user.verification_token = token
+        
+        # Send Email (handled in background or async)
+        await email_service.send_verification_email(current_user, token)
     
     # Small trust bump for "Completing Profile" if they haven't yet
     if v.trust_score == 0:
@@ -106,7 +125,9 @@ async def update_profile(
         id=v.id,
         name=v.name,
         phone_number=v.phone_number,
+        email=current_user.email,
         is_active=v.telegram_active,
+        is_email_verified=current_user.is_email_verified,
         trust_tier=v.trust_tier,
         trust_score=v.trust_score,
         id_verified=v.id_verified,
