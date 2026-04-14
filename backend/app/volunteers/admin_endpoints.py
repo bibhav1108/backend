@@ -17,7 +17,7 @@ async def list_volunteers(
 ):
     """List volunteers registered to the current NGO."""
     stmt = (
-        select(Volunteer, VolunteerStats.completions, VolunteerStats.no_shows, User.profile_image_url)
+        select(Volunteer, VolunteerStats.completions, VolunteerStats.no_shows, VolunteerStats.hours_served, User.profile_image_url)
         .outerjoin(VolunteerStats, Volunteer.id == VolunteerStats.volunteer_id)
         .outerjoin(User, Volunteer.user_id == User.id)
         .where(Volunteer.org_id == current_user.org_id)
@@ -30,10 +30,11 @@ async def list_volunteers(
     
     vols = []
     for row in result:
-        v, comp, noshow, img_url = row
+        v, comp, noshow, hours, img_url = row
         resp = VolunteerResponse.model_validate(v)
         resp.completions = comp or 0
         resp.no_shows = noshow or 0
+        resp.hours_served = hours or 0.0
         resp.profile_image_url = img_url
         vols.append(resp)
         

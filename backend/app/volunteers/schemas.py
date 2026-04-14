@@ -22,6 +22,9 @@ class VolunteerResponse(BaseModel):
     # Stats integrated for Dashboard view
     completions: int = 0
     no_shows: int = 0
+    hours_served: float = 0.0
+    skills: Optional[List[str]] = []
+    zone: Optional[str] = None
     profile_image_url: Optional[str] = None
 
     class Config:

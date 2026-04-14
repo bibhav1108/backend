@@ -13,6 +13,12 @@ class PatchNote(BaseModel):
     status: str
     note: Optional[str] = None
 
+class SMTPTestRequest(BaseModel):
+    host: Optional[str] = None
+    port: Optional[int] = None
+    user: Optional[str] = None
+    password: Optional[str] = None
+
 # Hardcoded patch data for now
 PATCHES = [
     {
@@ -76,10 +82,15 @@ async def get_current_version():
     return {"version": "2.0.0", "codename": "SahyogSync Duality"}
 
 @router.post("/test-smtp")
-async def test_smtp_diagnostic():
+async def test_smtp_diagnostic(data: Optional[SMTPTestRequest] = None):
     """
     Trigger a step-by-step diagnostic of the SMTP connection.
     Use this to identify where Render is blocking email traffic.
     """
-    report = await email_service.diagnose_connection()
+    report = await email_service.diagnose_connection(
+        host=data.host if data else None,
+        port=data.port if data else None,
+        user=data.user if data else None,
+        password=data.password if data else None
+    )
     return report
