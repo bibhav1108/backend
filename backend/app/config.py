@@ -21,9 +21,9 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     
     # CORS & Web Linking
-    ALLOWED_ORIGINS: Union[List[str], str] = ["https://sahyog-setu-frontend.vercel.app", "http://localhost:3000"]
+    ALLOWED_ORIGINS: Union[List[str], str] = ["https://sahyog-setu-frontend.vercel.app", "http://localhost:3000", "http://localhost:5173", "http://localhost:5174"]
     FRONTEND_URL: str = "https://sahyog-setu-frontend.vercel.app"
-    BACKEND_URL: str = "http://localhost:8000" # fallback
+    BACKEND_URL: str = "http://localhost:8005" # Match run.py port
 
     # SMTP Settings (Email/OTP)
     SMTP_HOST: Optional[str] = "smtp.gmail.com"

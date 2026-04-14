@@ -4,10 +4,12 @@ from backend.app.database import get_db
 from backend.app.models import User, UserRole
 from backend.app.api.deps import get_current_user
 from backend.app.services.email_service import email_service
-from .schemas import VolunteerProfileUpdate, VolunteerProfileResponse
+from .schemas import VolunteerProfileUpdate, VolunteerProfileResponse, EmailUpdateRequest, EmailVerifyRequest
 from .service import get_my_volunteer
 import uuid
-
+import random
+import string
+from datetime import datetime, timedelta, timezone
 router = APIRouter()
 
 @router.get("/me", response_model=VolunteerProfileResponse)
@@ -54,14 +56,6 @@ async def update_profile(
     if data.skills is not None: v.skills = data.skills
     if data.zone: v.zone = data.zone
 
-    # Email Verification Flow
-    if data.email and data.email != current_user.email:
-        current_user.email = data.email
-        current_user.is_email_verified = False
-        token = str(uuid.uuid4())
-        current_user.verification_token = token
-        await email_service.send_verification_email(current_user, token)
-    
     if v.trust_score == 0:
         v.trust_score = 5 
     
@@ -84,3 +78,54 @@ async def update_profile(
         hours_served=v.stats.hours_served if v.stats else 0.0,
         profile_image_url=current_user.profile_image_url
     )
+
+@router.post("/me/email/request-otp")
+async def request_email_update_otp(
+    data: EmailUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Request an OTP to update the volunteer's email address."""
+    if current_user.role != UserRole.VOLUNTEER:
+        raise HTTPException(status_code=403, detail="Only volunteers can access this endpoint")
+        
+    otp = "".join(random.choices(string.digits, k=6))
+    current_user.unverified_email = data.new_email
+    current_user.verification_token = otp
+    
+    await db.commit()
+    await email_service.send_email_update_otp(data.new_email, otp)
+    
+    return {"message": "OTP sent to the new email address."}
+
+@router.post("/me/email/verify")
+async def verify_email_update_otp(
+    data: EmailVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Verify the OTP and update the email address."""
+    if current_user.role != UserRole.VOLUNTEER:
+        raise HTTPException(status_code=403, detail="Only volunteers can access this endpoint")
+        
+    if not current_user.unverified_email or not current_user.verification_token:
+        raise HTTPException(status_code=400, detail="No pending email update request found.")
+        
+    if current_user.verification_token != data.otp:
+        raise HTTPException(status_code=400, detail="Invalid OTP")
+        
+    current_user.email = current_user.unverified_email
+    current_user.is_email_verified = True
+    current_user.unverified_email = None
+    current_user.verification_token = None
+    
+    # Optional: Update volunteer trust score
+    v = await get_my_volunteer(db, current_user.id)
+    if v:
+        from backend.app.models import TrustTier
+        v.trust_score += 10
+        v.trust_tier = TrustTier.ID_VERIFIED
+    
+    await db.commit()
+    
+    return {"message": "Email updated and verified successfully."}

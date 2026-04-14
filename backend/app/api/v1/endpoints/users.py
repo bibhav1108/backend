@@ -14,11 +14,14 @@ router = APIRouter()
 
 class UserRead(BaseModel):
     id: int
-    org_id: int
+    org_id: Optional[int]
     email: EmailStr
     full_name: Optional[str]
     is_active: bool
     created_at: datetime
+    trust_tier: Optional[str] = None
+    telegram_active: Optional[bool] = None
+    profile_image_url: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -27,12 +30,31 @@ class UserRead(BaseModel):
 
 @router.get("/me", response_model=UserRead)
 async def get_my_profile(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    Retrieve the profile of the currently logged-in user.
+    Retrieve the profile of the currently logged-in user, including volunteer status if applicable.
     """
-    return current_user
+    from backend.app.models import Volunteer
+    
+    stmt = select(Volunteer).where(Volunteer.user_id == current_user.id)
+    volunteer = (await db.execute(stmt)).scalar_one_or_none()
+    
+    # We create a dictionary to merge the user data with volunteer data
+    user_data = {
+        "id": current_user.id,
+        "org_id": current_user.org_id,
+        "email": current_user.email,
+        "full_name": current_user.full_name,
+        "is_active": current_user.is_active,
+        "created_at": current_user.created_at,
+        "profile_image_url": current_user.profile_image_url,
+        "trust_tier": volunteer.trust_tier if volunteer else None,
+        "telegram_active": volunteer.telegram_active if volunteer else None
+    }
+    
+    return user_data
 
 @router.get("/", response_model=List[UserRead])
 async def list_org_users(

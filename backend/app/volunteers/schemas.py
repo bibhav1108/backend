@@ -14,7 +14,7 @@ class VolunteerResponse(BaseModel):
     phone_number: str
     telegram_active: bool
     telegram_chat_id: Optional[str] = None
-    org_id: int
+    org_id: Optional[int]
     trust_tier: TrustTier
     trust_score: int = 0
     id_verified: bool = False
@@ -22,6 +22,7 @@ class VolunteerResponse(BaseModel):
     # Stats integrated for Dashboard view
     completions: int = 0
     no_shows: int = 0
+    profile_image_url: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -53,3 +54,10 @@ class VolunteerProfileResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class EmailUpdateRequest(BaseModel):
+    new_email: EmailStr
+
+class EmailVerifyRequest(BaseModel):
+    otp: str
+

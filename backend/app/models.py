@@ -59,6 +59,11 @@ class CampaignParticipationStatus(str, enum.Enum):
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
 
+class JoinRequestStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
 class UserRole(str, enum.Enum):
     NGO_ADMIN = "NGO_ADMIN"
     NGO_COORDINATOR = "NGO_COORDINATOR"
@@ -82,14 +87,18 @@ class Organization(Base):
     contact_phone: Mapped[str] = mapped_column(unique=True)
     contact_email: Mapped[str] = mapped_column(unique=True)
     status: Mapped[str] = mapped_column(default="pending")  # pending/active
+    
+    about: Mapped[Optional[str]] = mapped_column(nullable=True)
+    website_url: Mapped[Optional[str]] = mapped_column(nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     volunteers: Mapped[List["Volunteer"]] = relationship(back_populates="organization")
-    marketplace_needs: Mapped[List["MarketplaceNeed"]] = relationship(back_populates="organization")
+    marketplace_needs: Mapped[List["MarketplaceNeed"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     users: Mapped[List["User"]] = relationship(back_populates="organization")
-    inventory: Mapped[List["Inventory"]] = relationship(back_populates="organization")
-    marketplace_inventory: Mapped[List["MarketplaceInventory"]] = relationship(back_populates="organization")
-    campaigns: Mapped[List["NGO_Campaign"]] = relationship(back_populates="organization")
+    inventory: Mapped[List["Inventory"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    marketplace_inventory: Mapped[List["MarketplaceInventory"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    campaigns: Mapped[List["NGO_Campaign"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
 
     # --- Newsletter Broadcast Limits ---
     last_broadcast_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
@@ -99,7 +108,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
+    org_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
     email: Mapped[Optional[str]] = mapped_column(unique=True, index=True, nullable=True)
     username: Mapped[Optional[str]] = mapped_column(unique=True, index=True, nullable=True)
     hashed_password: Mapped[str] = mapped_column()
@@ -110,6 +119,8 @@ class User(Base):
     # Email Verification
     is_email_verified: Mapped[bool] = mapped_column(default=False)
     verification_token: Mapped[Optional[str]] = mapped_column(index=True, nullable=True)
+    unverified_email: Mapped[Optional[str]] = mapped_column(nullable=True)
+
     
     # Password Reset (OTP)
     password_reset_otp: Mapped[Optional[str]] = mapped_column(nullable=True)
@@ -119,14 +130,14 @@ class User(Base):
     
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
-    organization: Mapped["Organization"] = relationship(back_populates="users")
+    organization: Mapped[Optional["Organization"]] = relationship(back_populates="users")
 
 class Volunteer(Base):
     __tablename__ = "volunteers"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
-    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    org_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     name: Mapped[str] = mapped_column()
     phone_number: Mapped[str] = mapped_column(unique=True, index=True)
     telegram_chat_id: Mapped[Optional[str]] = mapped_column(unique=True, index=True, nullable=True)
@@ -142,13 +153,14 @@ class Volunteer(Base):
     location = Column(Geometry(geometry_type='POINT', srid=4326), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
-    organization: Mapped["Organization"] = relationship(back_populates="volunteers")
-    stats: Mapped["VolunteerStats"] = relationship(back_populates="volunteer", uselist=False)
+    organization: Mapped[Optional["Organization"]] = relationship(back_populates="volunteers")
+    stats: Mapped["VolunteerStats"] = relationship(back_populates="volunteer", uselist=False, cascade="all, delete-orphan")
+    join_requests: Mapped[List["VolunteerJoinRequest"]] = relationship(back_populates="volunteer", cascade="all, delete-orphan")
 
 class VolunteerStats(Base):
     __tablename__ = "volunteer_stats"
 
-    volunteer_id: Mapped[int] = mapped_column(ForeignKey("volunteers.id"), primary_key=True)
+    volunteer_id: Mapped[int] = mapped_column(ForeignKey("volunteers.id", ondelete="CASCADE"), primary_key=True)
     completions: Mapped[int] = mapped_column(default=0)
     no_shows: Mapped[int] = mapped_column(default=0)
     hours_served: Mapped[float] = mapped_column(default=0.0)
@@ -157,6 +169,18 @@ class VolunteerStats(Base):
     updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     volunteer: Mapped["Volunteer"] = relationship(back_populates="stats")
+
+class VolunteerJoinRequest(Base):
+    __tablename__ = "volunteer_join_requests"
+    
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    volunteer_id: Mapped[int] = mapped_column(ForeignKey("volunteers.id", ondelete="CASCADE"))
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"))
+    status: Mapped[JoinRequestStatus] = mapped_column(SQLEnum(JoinRequestStatus), default=JoinRequestStatus.PENDING)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
+    volunteer: Mapped["Volunteer"] = relationship(back_populates="join_requests")
+    organization: Mapped["Organization"] = relationship()
 
 class MarketplaceAlert(Base):
     __tablename__ = "marketplace_alerts"
@@ -181,14 +205,14 @@ class MarketplaceAlert(Base):
     predicted_type: Mapped[Optional[NeedType]] = mapped_column(SQLEnum(NeedType), nullable=True)
     predicted_urgency: Mapped[Optional[Urgency]] = mapped_column(SQLEnum(Urgency), nullable=True)
 
-    marketplace_needs: Mapped[List["MarketplaceNeed"]] = relationship(back_populates="marketplace_alert")
+    marketplace_needs: Mapped[List["MarketplaceNeed"]] = relationship(back_populates="marketplace_alert", cascade="all, delete-orphan")
 
 class MarketplaceNeed(Base):
     __tablename__ = "marketplace_needs"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    org_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id"), nullable=True)
-    marketplace_alert_id: Mapped[Optional[int]] = mapped_column(ForeignKey("marketplace_alerts.id"), nullable=True)
+    org_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
+    marketplace_alert_id: Mapped[Optional[int]] = mapped_column(ForeignKey("marketplace_alerts.id", ondelete="CASCADE"), nullable=True)
     type: Mapped[NeedType] = mapped_column(SQLEnum(NeedType))
     description: Mapped[str] = mapped_column()
     quantity: Mapped[str] = mapped_column()
@@ -200,14 +224,14 @@ class MarketplaceNeed(Base):
 
     organization: Mapped["Organization"] = relationship(back_populates="marketplace_needs")
     marketplace_alert: Mapped["MarketplaceAlert"] = relationship(back_populates="marketplace_needs")
-    dispatches: Mapped[List["MarketplaceDispatch"]] = relationship(back_populates="marketplace_need")
+    dispatches: Mapped[List["MarketplaceDispatch"]] = relationship(back_populates="marketplace_need", cascade="all, delete-orphan")
 
 class MarketplaceDispatch(Base):
     __tablename__ = "marketplace_dispatches"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    marketplace_need_id: Mapped[int] = mapped_column(ForeignKey("marketplace_needs.id"))
-    volunteer_id: Mapped[int] = mapped_column(ForeignKey("volunteers.id"))
+    marketplace_need_id: Mapped[int] = mapped_column(ForeignKey("marketplace_needs.id", ondelete="CASCADE"))
+    volunteer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("volunteers.id", ondelete="SET NULL"), nullable=True)
     
     otp_hash: Mapped[Optional[str]] = mapped_column(nullable=True)
     otp_used: Mapped[bool] = mapped_column(default=False)
@@ -218,13 +242,13 @@ class MarketplaceDispatch(Base):
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     marketplace_need: Mapped["MarketplaceNeed"] = relationship(back_populates="dispatches")
-    volunteer: Mapped["Volunteer"] = relationship()
+    volunteer: Mapped[Optional["Volunteer"]] = relationship()
 
 class NGO_Campaign(Base):
     __tablename__ = "ngo_campaigns"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(index=True)
     description: Mapped[Optional[str]] = mapped_column(nullable=True)
     type: Mapped[CampaignType] = mapped_column(SQLEnum(CampaignType), default=CampaignType.OTHER)
@@ -241,25 +265,25 @@ class NGO_Campaign(Base):
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     organization: Mapped["Organization"] = relationship(back_populates="campaigns")
-    participants: Mapped[List["MissionTeam"]] = relationship(back_populates="campaign")
+    participants: Mapped[List["MissionTeam"]] = relationship(back_populates="campaign", cascade="all, delete-orphan")
 
 class MissionTeam(Base):
     __tablename__ = "mission_teams"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    campaign_id: Mapped[int] = mapped_column(ForeignKey("ngo_campaigns.id"))
-    volunteer_id: Mapped[int] = mapped_column(ForeignKey("volunteers.id"))
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("ngo_campaigns.id", ondelete="CASCADE"))
+    volunteer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("volunteers.id", ondelete="SET NULL"), nullable=True)
     status: Mapped[CampaignParticipationStatus] = mapped_column(SQLEnum(CampaignParticipationStatus), default=CampaignParticipationStatus.PENDING)
     joined_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     campaign: Mapped["NGO_Campaign"] = relationship(back_populates="participants")
-    volunteer: Mapped["Volunteer"] = relationship()
+    volunteer: Mapped[Optional["Volunteer"]] = relationship()
 
 class Inventory(Base):
     __tablename__ = "inventory"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"))
     item_name: Mapped[str] = mapped_column(index=True)
     quantity: Mapped[float] = mapped_column(default=0.0)
     unit: Mapped[str] = mapped_column()
@@ -273,7 +297,7 @@ class MarketplaceInventory(Base):
     __tablename__ = "marketplace_inventory"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"))
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"))
     item_name: Mapped[str] = mapped_column(index=True)
     quantity: Mapped[float] = mapped_column(default=0.0)
     unit: Mapped[str] = mapped_column()
@@ -307,7 +331,7 @@ class AuditTrail(Base) :
     __tablename__ = "audit_events"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    org_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id"), nullable=True)
+    org_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
     actor_id: Mapped[Optional[int]] = mapped_column(nullable=True)
     event_type: Mapped[str] = mapped_column()
     target_id: Mapped[Optional[str]] = mapped_column(nullable=True)
@@ -318,7 +342,7 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    org_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id"), nullable=True)
+    org_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     
     type: Mapped[NotificationType] = mapped_column(SQLEnum(NotificationType))
     title: Mapped[str] = mapped_column()
@@ -331,3 +355,12 @@ class Notification(Base):
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     organization: Mapped["Organization"] = relationship()
+
+class RegistrationVerification(Base):
+    __tablename__ = "registration_verifications"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(unique=True, index=True)
+    hashed_otp: Mapped[str] = mapped_column()
+    expires_at: Mapped[datetime] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))

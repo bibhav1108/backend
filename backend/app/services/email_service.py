@@ -78,5 +78,43 @@ class EmailService:
         """
         await self.send_email(user.email, subject, html)
 
+    async def send_email_update_otp(self, email: str, otp: str):
+        """Sends a 6-digit OTP for updating email address."""
+        subject = f"Email Verification Code - {settings.EMAILS_FROM_NAME}"
+        html = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <p>Hello,</p>
+                <p>You requested to update your account email to this address.</p>
+                <p>Use the One-Time Password (OTP) below to verify this email:</p>
+                <p style="font-size: 18px; font-weight: bold;">🔐 OTP: {otp}</p>
+                <p>This code is valid for the next 15 minutes.</p>
+                <p>If you did not request this change, please ignore this email.</p>
+                <p>Best regards,<br>Support Team</p>
+            </body>
+        </html>
+        """
+        await self.send_email(email, subject, html)
+
+    async def send_registration_otp(self, email: str, otp: str):
+        """Sends a 6-digit OTP for the new volunteer registration flow."""
+        subject = f"Your Registration Code - {settings.EMAILS_FROM_NAME}"
+        html = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; text-align: center;">
+                <div style="max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #007bff;">Welcome to Sahyog Sync!</h2>
+                    <p>To verify your email address and join our volunteer network, please use the code below:</p>
+                    <div style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #333; margin: 30px 0; padding: 15px; background: #f8f9fa; border-radius: 5px; display: inline-block;">
+                        {otp}
+                    </div>
+                    <p>This code will expire in 15 minutes.</p>
+                    <p style="font-size: 12px; color: #777;">If you didn't request this, you can safely ignore this email.</p>
+                </div>
+            </body>
+        </html>
+        """
+        await self.send_email(email, subject, html)
+
 # Singleton instance
 email_service = EmailService()

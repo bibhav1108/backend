@@ -68,7 +68,8 @@ async def run_migrations():
             'trusttier': ['UNVERIFIED', 'ID_VERIFIED', 'FIELD_VERIFIED'],
             'urgency': ['LOW', 'MEDIUM', 'HIGH'],
             'notificationtype': ['DONOR_ALERT', 'MISSION_ACCEPTED', 'MISSION_COMPLETED', 'MISSION_CANCELLED', 'CAMPAIGN_INTEREST', 'SYSTEM'],
-            'userrole': ['NGO_ADMIN', 'NGO_COORDINATOR', 'VOLUNTEER']
+            'userrole': ['NGO_ADMIN', 'NGO_COORDINATOR', 'VOLUNTEER'],
+            'joinrequeststatus': ['PENDING', 'APPROVED', 'REJECTED']
         }
         
         for type_name, vals in types_map.items():
@@ -140,6 +141,10 @@ async def run_migrations():
         await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS is_confirmed BOOLEAN DEFAULT FALSE;"))
         await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS is_processed BOOLEAN DEFAULT FALSE;"))
 
+        # Organization Extensions
+        await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS about TEXT;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS website_url VARCHAR;"))
+
         # Create New Tables
         await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS marketplace_inventory (
@@ -149,6 +154,17 @@ async def run_migrations():
                 quantity FLOAT DEFAULT 0.0,
                 unit VARCHAR NOT NULL,
                 collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """))
+
+        # Volunteer Join Requests Table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS volunteer_join_requests (
+                id SERIAL PRIMARY KEY,
+                volunteer_id INTEGER NOT NULL REFERENCES volunteers(id),
+                org_id INTEGER NOT NULL REFERENCES organizations(id),
+                status joinrequeststatus DEFAULT 'PENDING',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """))
 
@@ -214,13 +230,16 @@ async def run_migrations():
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id);"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS skills JSON;"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS location geometry(POINT, 4326);"))
+        await conn.execute(text("ALTER TABLE volunteers ALTER COLUMN org_id DROP NOT NULL;"))
 
         # User Extension: Support Volunteers, Roles, and Email Verification
         await conn.execute(text("ALTER TABLE users ALTER COLUMN email DROP NOT NULL;"))
+        await conn.execute(text("ALTER TABLE users ALTER COLUMN org_id DROP NOT NULL;"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR UNIQUE;"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS role userrole DEFAULT 'NGO_COORDINATOR';"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_email_verified BOOLEAN DEFAULT FALSE;"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token VARCHAR;"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS unverified_email VARCHAR;"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_otp VARCHAR;"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP;"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url VARCHAR DEFAULT '/static/default_pfp.jpg';"))
@@ -238,7 +257,71 @@ async def run_migrations():
 
         # Final Cleanup: Remove references that cross-wire Marketplace and Campaign
         await conn.execute(text("ALTER TABLE marketplace_needs DROP COLUMN IF EXISTS campaign_id;"))
+
+        # Registration Verifications Table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS registration_verifications (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR NOT NULL UNIQUE,
+                hashed_otp VARCHAR NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS ix_registration_verifications_email ON registration_verifications (email);
+        """))
        
+        # 3. Cascade Upgrade: Transition existing Foreign Keys to Logical Strategies
+        print("[Migrations] Upgrading Foreign Keys to Logical Strategies...")
+        
+        # Ensure Nullability for SET NULL targets
+        await conn.execute(text("ALTER TABLE mission_teams ALTER COLUMN volunteer_id DROP NOT NULL;"))
+        await conn.execute(text("ALTER TABLE marketplace_dispatches ALTER COLUMN volunteer_id DROP NOT NULL;"))
+        
+        fk_query = """
+            SELECT 
+                tc.table_name, 
+                kcu.column_name, 
+                ccu.table_name AS foreign_table_name,
+                ccu.column_name AS foreign_column_name,
+                tc.constraint_name
+            FROM 
+                information_schema.table_constraints AS tc 
+                JOIN information_schema.key_column_usage AS kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                  AND tc.table_schema = kcu.table_schema
+                JOIN (
+                    SELECT constraint_name, table_name, column_name, table_schema
+                    FROM information_schema.constraint_column_usage
+                ) AS ccu
+                  ON ccu.constraint_name = tc.constraint_name
+                  AND ccu.table_schema = tc.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public';
+        """
+        fks = (await conn.execute(text(fk_query))).all()
+        
+        # Define rule overrides (Default is CASCADE)
+        special_rules = {
+            ("mission_teams", "volunteer_id"): "SET NULL",
+            ("marketplace_dispatches", "volunteer_id"): "SET NULL",
+            ("volunteers", "org_id"): "SET NULL",
+            ("users", "org_id"): "SET NULL",
+            ("audit_events", "org_id"): "SET NULL"
+        }
+
+        for row in fks:
+            table, col, f_table, f_col, con_name = row
+            strategy = special_rules.get((table, col), "CASCADE")
+            
+            print(f"   - [FK] Updating {table}.{col} -> {f_table}.{f_col} ({strategy})")
+            try:
+                await conn.execute(text(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {con_name};"))
+                await conn.execute(text(f"""
+                    ALTER TABLE {table} 
+                    ADD CONSTRAINT {con_name} 
+                    FOREIGN KEY ({col}) REFERENCES {f_table}({f_col}) ON DELETE {strategy};
+                """))
+            except Exception as e:
+                print(f"     (Skip Upgrade for {con_name}: {e})")
 
     print("[Migrations] V2.0 Dual-Engine Sync Done.")
 

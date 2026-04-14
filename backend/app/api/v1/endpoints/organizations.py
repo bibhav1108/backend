@@ -6,7 +6,7 @@ from backend.app.models import Organization, User, UserRole
 from backend.app.services.auth_utils import get_password_hash
 from backend.app.api.deps import get_current_user
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 router = APIRouter()
@@ -23,6 +23,15 @@ class NGORegistrationRequest(BaseModel):
     admin_name: str = Field(..., example="Amit Singh")
     admin_email: EmailStr = Field(..., example="amit@helpinghands.org")
     admin_password: str = Field(..., min_length=8, example="securePassword123")
+
+class PublicOrganizationRead(BaseModel):
+    id: int
+    name: str
+    about: Optional[str] = None
+    website_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 class NGORegistrationResponse(BaseModel):
     org_id: int
@@ -127,3 +136,14 @@ async def get_my_organization(
             detail="Organization not found"
         )
     return org
+
+@router.get("/public", response_model=List[PublicOrganizationRead])
+async def get_public_organizations(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Returns a list of active organizations for public registration use.
+    """
+    stmt = select(Organization).where(Organization.status == "active")
+    result = await db.execute(stmt)
+    return result.scalars().all()
