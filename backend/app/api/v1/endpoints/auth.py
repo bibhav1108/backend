@@ -71,7 +71,14 @@ async def login(
     # 4. Normalize role
     role_value = user.role.value if isinstance(user.role, UserRole) else user.role
 
-    # 5. Create JWT
+    # 5. Check Org Approval Status (Only for NGO/Volunteer roles, skip for SYSTEM_ADMIN)
+    if role_value != UserRole.SYSTEM_ADMIN and org and org.status == "pending":
+         raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your organization is awaiting admin approval. Please check back later."
+        )
+
+    # 6. Create JWT
     sub_val = user.email or user.username
     access_token = create_access_token(
         data={

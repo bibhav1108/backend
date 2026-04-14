@@ -206,7 +206,7 @@ async def create_campaign(
         actor_id=current_user.id,
         event_type="MISSION_LAUNCHED",
         target_id=str(new_campaign.id),
-        notes=f"Mission '{new_campaign.name}' launched with items: {new_campaign.items}"
+        notes=f"New mission '{new_campaign.name}' launched with {len(new_campaign.items) if new_campaign.items else 0} resource types reserved."
     )
     db.add(audit)
 
@@ -416,7 +416,17 @@ async def approve_volunteer(
     
     participation.status = CampaignParticipationStatus.APPROVED
     
-    # 3. Notify Volunteer
+    # 3. Log Audit Event
+    audit = AuditTrail(
+        org_id=current_user.org_id,
+        actor_id=current_user.id,
+        event_type="PARTICIPANT_APPROVED",
+        target_id=str(campaign_id),
+        notes=f"Volunteer '{volunteer.name}' approved for Mission '{campaign.name}'."
+    )
+    db.add(audit)
+
+    # 4. Notify Volunteer
     vol_stmt = select(Volunteer).where(Volunteer.id == vol_id)
     volunteer = (await db.execute(vol_stmt)).scalar_one_or_none()
     if volunteer and volunteer.telegram_chat_id:
@@ -478,7 +488,7 @@ async def complete_campaign(
         actor_id=current_user.id,
         event_type="MISSION_COMPLETED",
         target_id=str(campaign.id),
-        notes=f"Mission '{campaign.name}' completed. Volunteers: {len(approved_volunteers)}, Items: {campaign.items}"
+        notes=f"Mission '{campaign.name}' completed successfully with {len(approved_volunteers)} volunteers active."
     )
     db.add(audit)
                 

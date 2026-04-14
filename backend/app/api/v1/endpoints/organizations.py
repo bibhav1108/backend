@@ -86,7 +86,7 @@ async def register_ngo(
             name=data.org_name,
             contact_phone=data.org_phone,
             contact_email=data.org_email,
-            status="active" # Auto-activate for MVP/V1.5
+            status="pending" # Requires Admin Approval
         )
         db.add(new_org)
         await db.flush() # Populate ID
@@ -97,7 +97,7 @@ async def register_ngo(
             email=data.admin_email,
             hashed_password=get_password_hash(data.admin_password),
             full_name=data.admin_name,
-            role=UserRole.NGO_ADMIN
+            role=UserRole.NGO_COORDINATOR
         )
         db.add(new_user)
         
@@ -108,7 +108,7 @@ async def register_ngo(
             "org_id": new_org.id,
             "org_name": new_org.name,
             "admin_email": new_user.email,
-            "message": "Registration successful! You can now login."
+            "message": "Registration successful! Your organization is now awaiting admin approval. You will be able to login once activated."
         }
         
     except Exception as e:

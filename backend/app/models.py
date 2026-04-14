@@ -65,7 +65,7 @@ class JoinRequestStatus(str, enum.Enum):
     REJECTED = "REJECTED"
 
 class UserRole(str, enum.Enum):
-    NGO_ADMIN = "NGO_ADMIN"
+    SYSTEM_ADMIN = "SYSTEM_ADMIN"
     NGO_COORDINATOR = "NGO_COORDINATOR"
     VOLUNTEER = "VOLUNTEER"
 

@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Optional
 from backend.app.database import get_db
-from backend.app.models import Volunteer, VolunteerStats, User, UserRole, TrustTier
+from backend.app.models import Volunteer, VolunteerStats, User, UserRole, TrustTier, AuditTrail
 from backend.app.api.deps import get_current_user
 from .schemas import VolunteerCreate, VolunteerResponse, TrustUpdate
 
@@ -65,6 +65,16 @@ async def register_volunteer(
     stats = VolunteerStats(volunteer_id=volunteer.id)
     db.add(stats)
 
+    # Audit Log
+    audit = AuditTrail(
+        org_id=current_user.org_id,
+        actor_id=current_user.id,
+        event_type="VOLUNTEER_REGISTERED",
+        target_id=str(volunteer.id),
+        notes=f"New volunteer '{volunteer.name}' registered manually."
+    )
+    db.add(audit)
+
     await db.commit()
     await db.refresh(volunteer)
     
@@ -99,7 +109,7 @@ async def verify_volunteer_id(
     current_user: User = Depends(get_current_user)
 ):
     """NGO Admin manually verifies a volunteer's identity."""
-    if current_user.role not in [UserRole.NGO_ADMIN, UserRole.NGO_COORDINATOR]:
+    if current_user.role != UserRole.NGO_COORDINATOR:
         raise HTTPException(status_code=403, detail="Only admins can verify identity")
         
     stmt = select(Volunteer).where(Volunteer.id == vol_id, Volunteer.org_id == current_user.org_id)

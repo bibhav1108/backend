@@ -162,7 +162,7 @@ async def get_incoming_requests(
     current_user: User = Depends(get_current_user)
 ):
     """NGO views pending requests from volunteers."""
-    if current_user.role not in [UserRole.NGO_ADMIN, UserRole.NGO_COORDINATOR]:
+    if current_user.role != UserRole.NGO_COORDINATOR:
         raise HTTPException(status_code=403, detail="Only NGO staff can view incoming requests")
 
     stmt = select(VolunteerJoinRequest).where(
@@ -195,7 +195,7 @@ async def handle_join_request(
     current_user: User = Depends(get_current_user)
 ):
     """NGO approves or rejects a volunteer's request."""
-    if current_user.role not in [UserRole.NGO_ADMIN, UserRole.NGO_COORDINATOR]:
+    if current_user.role != UserRole.NGO_COORDINATOR:
         raise HTTPException(status_code=403, detail="Only NGO staff can handle requests")
 
     request = await db.get(VolunteerJoinRequest, request_id)

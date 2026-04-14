@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.app.database import get_db
-from backend.app.models import Inventory, User
+from backend.app.models import Inventory, User, AuditTrail
 from backend.app.api.deps import get_current_user
 from pydantic import BaseModel
 from typing import List, Optional
@@ -69,6 +69,17 @@ async def add_inventory_item(
         **data.model_dump()
     )
     db.add(item)
+    
+    # Audit Log
+    audit = AuditTrail(
+        org_id=current_user.org_id,
+        actor_id=current_user.id,
+        event_type="INVENTORY_ADDED",
+        target_id=None,
+        notes=f"Added '{item.item_name}' to inventory: {item.quantity} {item.unit} incoming."
+    )
+    db.add(audit)
+
     await db.commit()
     await db.refresh(item)
     return item
@@ -94,6 +105,16 @@ async def update_inventory_item(
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(item, field, value)
+    
+    # Audit Log
+    audit = AuditTrail(
+        org_id=current_user.org_id,
+        actor_id=current_user.id,
+        event_type="INVENTORY_UPDATED",
+        target_id=str(item.id),
+        notes=f"Stock updated for '{item.item_name}': Current quantity now {item.quantity} {item.unit}."
+    )
+    db.add(audit)
     
     await db.commit()
     await db.refresh(item)

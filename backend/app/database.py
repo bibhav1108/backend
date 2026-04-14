@@ -68,7 +68,7 @@ async def run_migrations():
             'trusttier': ['UNVERIFIED', 'ID_VERIFIED', 'FIELD_VERIFIED'],
             'urgency': ['LOW', 'MEDIUM', 'HIGH'],
             'notificationtype': ['DONOR_ALERT', 'MISSION_ACCEPTED', 'MISSION_COMPLETED', 'MISSION_CANCELLED', 'CAMPAIGN_INTEREST', 'SYSTEM'],
-            'userrole': ['NGO_ADMIN', 'NGO_COORDINATOR', 'VOLUNTEER'],
+            'userrole': ['SYSTEM_ADMIN', 'NGO_COORDINATOR', 'VOLUNTEER'],
             'joinrequeststatus': ['PENDING', 'APPROVED', 'REJECTED']
         }
         
