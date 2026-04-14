@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List, Optional
+from backend.app.services.email_service import email_service
 
 router = APIRouter()
 
@@ -73,3 +74,12 @@ async def get_current_version():
     Get the current active application version.
     """
     return {"version": "2.0.0", "codename": "SahyogSync Duality"}
+
+@router.post("/test-smtp")
+async def test_smtp_diagnostic():
+    """
+    Trigger a step-by-step diagnostic of the SMTP connection.
+    Use this to identify where Render is blocking email traffic.
+    """
+    report = await email_service.diagnose_connection()
+    return report

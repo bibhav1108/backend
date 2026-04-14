@@ -3,6 +3,9 @@ from email.message import EmailMessage
 from backend.app.config import settings
 from backend.app.models import User
 import traceback
+import time
+import socket
+import ssl
 
 class EmailService:
     @property
@@ -124,6 +127,90 @@ class EmailService:
         </html>
         """
         await self.send_email(email, subject, html)
+
+    async def diagnose_connection(self):
+        """
+        Performs a step-by-step SMTP diagnostic to identify 
+        where the connection is hanging or failing.
+        """
+        report = {
+            "timestamp": time.time(),
+            "config": {
+                "host": settings.SMTP_HOST,
+                "port": settings.SMTP_PORT,
+                "user": settings.SMTP_USER,
+                "use_tls": settings.SMTP_PORT == 465,
+                "start_tls": settings.SMTP_PORT == 587,
+            },
+            "steps": [],
+            "success": False,
+            "error": None
+        }
+
+        def add_step(name, status, detail=None, duration=None):
+            report["steps"].append({
+                "name": name,
+                "status": status,
+                "detail": str(detail) if detail else None,
+                "duration_ms": round(duration * 1000, 2) if duration else None
+            })
+
+        start_time = time.time()
+        
+        # Step 1: DNS Resolution
+        try:
+            dns_start = time.time()
+            ip = socket.gethostbyname(settings.SMTP_HOST)
+            add_step("DNS Resolution", "SUCCESS", f"Resolved to {ip}", time.time() - dns_start)
+        except Exception as e:
+            add_step("DNS Resolution", "FAILED", e)
+            report["error"] = f"DNS Failed: {e}"
+            return report
+
+        # Step 2: Socket Connection (Connectivity Test)
+        try:
+            sock_start = time.time()
+            s = socket.create_connection((settings.SMTP_HOST, settings.SMTP_PORT), timeout=10)
+            s.close()
+            add_step("Socket Connection", "SUCCESS", "Port reachable", time.time() - sock_start)
+        except Exception as e:
+            add_step("Socket Connection", "FAILED", e)
+            report["error"] = f"Socket Failed: {e}. HINT: Render likely blocks port {settings.SMTP_PORT}"
+            return report
+
+        # Step 3: SMTP Handshake
+        smtp = aiosmtplib.SMTP(
+            hostname=settings.SMTP_HOST, 
+            port=settings.SMTP_PORT, 
+            use_tls=settings.SMTP_PORT == 465,
+            timeout=15
+        )
+        
+        try:
+            handshake_start = time.time()
+            await smtp.connect()
+            add_step("SMTP Connect", "SUCCESS", "EHLO Received", time.time() - handshake_start)
+
+            if settings.SMTP_PORT == 587:
+                tls_start = time.time()
+                await smtp.starttls()
+                add_step("STARTTLS", "SUCCESS", "Encryption active", time.time() - tls_start)
+
+            login_start = time.time()
+            await smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            add_step("SMTP Login", "SUCCESS", f"Authenticated as {settings.SMTP_USER}", time.time() - login_start)
+            
+            report["success"] = True
+        except Exception as e:
+            add_step("SMTP Protocol", "FAILED", e)
+            report["error"] = f"Protocol Error: {e}"
+        finally:
+            try:
+                await smtp.quit()
+            except:
+                pass
+
+        return report
 
 # Singleton instance
 email_service = EmailService()
