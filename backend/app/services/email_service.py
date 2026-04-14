@@ -26,6 +26,7 @@ class EmailService:
         message.set_content(html_content, subtype="html")
 
         try:
+            # Increase timeout for slow cloud environments like Render
             await aiosmtplib.send(
                 message,
                 hostname=settings.SMTP_HOST,
@@ -34,8 +35,16 @@ class EmailService:
                 password=settings.SMTP_PASSWORD,
                 use_tls=settings.SMTP_PORT == 465,
                 start_tls=settings.SMTP_PORT == 587,
+                timeout=30  # Increased timeout from default (usually 1.0 or 5.0)
             )
             print(f"[SUCCESS] Email sent to {recipient_email}")
+        except aiosmtplib.errors.SMTPConnectTimeoutError:
+            error_msg = (
+                f"[ERROR] SMTP Connection Timeout on port {settings.SMTP_PORT}. "
+                "HINT: If you are on Render/Cloud, port 587 is often blocked. "
+                "Try switching SMTP_PORT to 465 in your enviroment variables."
+            )
+            print(error_msg)
         except Exception as e:
             print(f"[ERROR] Failed to send email to {recipient_email}: {e}")
             traceback.print_exc()

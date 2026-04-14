@@ -421,6 +421,7 @@ async def telegram_webhook(
                         item=alert.item or "Potential Surplus",
                         location=alert.location or "See contacts"
                     )
+                    await db.commit()
 
             if data_payload.startswith("ai_edit_"):
                 alert_id = int(data_payload.split("_")[2])

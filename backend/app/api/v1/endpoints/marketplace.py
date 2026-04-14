@@ -13,6 +13,7 @@ from backend.app.models import (
 )
 from backend.app.api.deps import get_current_user, get_current_user_optional
 from backend.app.services.telegram_service import telegram_service
+from backend.app.notifications.service import notification_service
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import List, Optional
@@ -150,6 +151,9 @@ async def claim_marketplace_need(
                 f"They are now assigning a dedicated volunteer to reach you for the pickup. Thank you for your generosity!"
             )
             await telegram_service.send_message(chat_id=alert.chat_id, text=msg)
+            
+            # Auto-Cleanup: Remove notifications for other NGOs since it's already claimed
+            await notification_service.cleanup_alert_notifications(db, alert.id, current_user.org_id)
 
     return need
 
@@ -208,6 +212,9 @@ async def convert_alert_to_marketplace_need(
     alert.is_processed = True
     await db.commit()
     await db.refresh(new_need)
+    
+    # Auto-Cleanup: Remove notifications for other NGOs now that it is converted/taken
+    await notification_service.cleanup_alert_notifications(db, alert.id, current_user.org_id)
     
     # Notify Donor
     stmt_org = select(Organization).where(Organization.id == current_user.org_id)

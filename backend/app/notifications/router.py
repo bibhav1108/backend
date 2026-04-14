@@ -38,7 +38,7 @@ async def mark_notification_read(
     """Marks a specific notification as read."""
     stmt = select(Notification).where(
         Notification.id == notification_id,
-        Notification.org_id == current_user.org_id
+        (Notification.org_id == current_user.org_id) | (Notification.org_id == None)
     )
     notif = (await db.execute(stmt)).scalar_one_or_none()
     
