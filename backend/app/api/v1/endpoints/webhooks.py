@@ -403,7 +403,16 @@ async def telegram_webhook(
                     alert.is_confirmed = True
                     alert.is_processed = False
                     await db.commit()
-                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *Report Verified!* Your donation is now live and waiting for a hero. ✨🤝")
+                    
+                    loc_request_kb = {
+                        "keyboard": [[{"text": "📍 Share My Location", "request_location": True}]],
+                        "resize_keyboard": True,
+                        "one_time_keyboard": True
+                    }
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, 
+                        text="✅ *Report Verified!* Your donation is now live.\n\n🌟 *Final Step*: To help our volunteers reach you accurately, please click below to share your pickup location! 👇",
+                        reply_markup=loc_request_kb
+                    )
                     
                     # --- Notification Center: New Donor Alert ---
                     await notification_service.notify_donor_alert(
@@ -454,6 +463,27 @@ async def telegram_webhook(
         chat_id = str(message["chat"]["id"])
         text = message.get("text", "").strip()
         contact = message.get("contact")
+        location = message.get("location")
+
+        # --- Handle Shared Location ---
+        if location:
+            lat = location.get("latitude")
+            lng = location.get("longitude")
+            print(f"[TRACE] Location Received from {chat_id}: {lat}, {lng}")
+            
+            # Find recent alert for this user that doesn't have coordinates
+            stmt_alt = select(MarketplaceAlert).where(
+                MarketplaceAlert.chat_id == chat_id
+            ).order_by(MarketplaceAlert.created_at.desc()).limit(1)
+            alert = (await db.execute(stmt_alt)).scalar_one_or_none()
+            
+            if alert:
+                alert.latitude = lat
+                alert.longitude = lng
+                await db.commit()
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="📍 *Location Linked!* Thank you! This helps our heroes find the pickup spot faster. 🦸‍♂️")
+                return {"status": "location_recorded"}
+            return {"status": "location_ignored_no_alert"}
 
         # --- Handle Shared Contact (Strict Verification) ---
         if contact:

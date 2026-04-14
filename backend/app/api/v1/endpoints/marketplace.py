@@ -28,6 +28,8 @@ class MarketplaceNeedCreate(BaseModel):
     pickup_deadline: Optional[datetime] = None
     org_id: Optional[int] = None
     marketplace_alert_id: Optional[int] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 class MarketplaceNeedResponse(BaseModel):
     id: int
@@ -39,6 +41,8 @@ class MarketplaceNeedResponse(BaseModel):
     urgency: Urgency
     status: NeedStatus
     marketplace_alert_id: Optional[int]
+    latitude: Optional[float]
+    longitude: Optional[float]
     pickup_deadline: Optional[datetime]
     created_at: datetime
 
@@ -51,6 +55,8 @@ class MarketplaceAlertResponse(BaseModel):
     item: Optional[str]
     quantity: Optional[str]
     location: Optional[str]
+    latitude: Optional[float]
+    longitude: Optional[float]
     notes: Optional[str]
     created_at: datetime
     is_confirmed: bool
@@ -192,6 +198,8 @@ async def convert_alert_to_marketplace_need(
         description=f"ITEM: {alert.item or 'Not Specified'} | NOTES: {need_description}",
         quantity=alert.quantity or "As per report",
         pickup_address=alert.location or "Check donor contact",
+        latitude=alert.latitude,
+        longitude=alert.longitude,
         urgency=alert.predicted_urgency or Urgency.HIGH,
         status=NeedStatus.OPEN
     )

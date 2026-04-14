@@ -140,6 +140,10 @@ async def run_migrations():
         await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS predicted_urgency urgency;"))
         await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS is_confirmed BOOLEAN DEFAULT FALSE;"))
         await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS is_processed BOOLEAN DEFAULT FALSE;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS latitude FLOAT;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS marketplace_alerts ADD COLUMN IF NOT EXISTS longitude FLOAT;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS marketplace_needs ADD COLUMN IF NOT EXISTS latitude FLOAT;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS marketplace_needs ADD COLUMN IF NOT EXISTS longitude FLOAT;"))
 
         # Organization Extensions
         await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS about TEXT;"))

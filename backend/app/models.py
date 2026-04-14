@@ -195,6 +195,8 @@ class MarketplaceAlert(Base):
     item: Mapped[Optional[str]] = mapped_column(nullable=True)
     quantity: Mapped[Optional[str]] = mapped_column(nullable=True)
     location: Mapped[Optional[str]] = mapped_column(nullable=True)
+    latitude: Mapped[Optional[float]] = mapped_column(nullable=True)
+    longitude: Mapped[Optional[float]] = mapped_column(nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
@@ -217,6 +219,8 @@ class MarketplaceNeed(Base):
     description: Mapped[str] = mapped_column()
     quantity: Mapped[str] = mapped_column()
     pickup_address: Mapped[str] = mapped_column()
+    latitude: Mapped[Optional[float]] = mapped_column(nullable=True)
+    longitude: Mapped[Optional[float]] = mapped_column(nullable=True)
     urgency: Mapped[Urgency] = mapped_column(SQLEnum(Urgency), default=Urgency.MEDIUM)
     status: Mapped[NeedStatus] = mapped_column(SQLEnum(NeedStatus), default=NeedStatus.OPEN)
     pickup_deadline: Mapped[Optional[datetime]] = mapped_column(nullable=True)
