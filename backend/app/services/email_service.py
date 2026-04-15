@@ -6,11 +6,15 @@ import traceback
 import time
 import socket
 import ssl
+import resend
 
 class EmailService:
     @property
     def is_configured(self) -> bool:
-        return all([settings.SMTP_USER, settings.SMTP_PASSWORD, settings.EMAILS_FROM_EMAIL])
+        return any([
+            settings.RESEND_API_KEY,
+            all([settings.SMTP_USER, settings.SMTP_PASSWORD, settings.EMAILS_FROM_EMAIL])
+        ])
 
     async def send_email(self, recipient_email: str, subject: str, html_content: str):
         """Generic async email sender with fallback to logging."""
@@ -22,35 +26,52 @@ class EmailService:
             print("="*50 + "\n")
             return
 
-        message = EmailMessage()
-        message["From"] = f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL}>"
-        message["To"] = recipient_email
-        message["Subject"] = subject
-        message.set_content(html_content, subtype="html")
+        # --- OPTION 1: RESEND HTTP API (Best for Render/Cloud) ---
+        if settings.RESEND_API_KEY:
+            try:
+                resend.api_key = settings.RESEND_API_KEY
+                
+                # Resend call is synchronous but fast, we wrap in try block
+                params = {
+                    "from": f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL or 'onboarding@resend.dev'}>",
+                    "to": [recipient_email],
+                    "subject": subject,
+                    "html": html_content,
+                }
+                resend.Emails.send(params)
+                print(f"[SUCCESS] Email sent via Resend API to {recipient_email}")
+                return
+            except Exception as e:
+                print(f"[WARNING] Resend API failed: {e}. Falling back to SMTP if available.")
 
-        try:
-            # Increase timeout for slow cloud environments like Render
-            await aiosmtplib.send(
-                message,
-                hostname=settings.SMTP_HOST,
-                port=settings.SMTP_PORT,
-                username=settings.SMTP_USER,
-                password=settings.SMTP_PASSWORD,
-                use_tls=settings.SMTP_PORT == 465,
-                start_tls=settings.SMTP_PORT == 587,
-                timeout=30  # Increased timeout from default (usually 1.0 or 5.0)
-            )
-            print(f"[SUCCESS] Email sent to {recipient_email}")
-        except aiosmtplib.errors.SMTPConnectTimeoutError:
-            error_msg = (
-                f"[ERROR] SMTP Connection Timeout on port {settings.SMTP_PORT}. "
-                "HINT: If you are on Render/Cloud, port 587 is often blocked. "
-                "Try switching SMTP_PORT to 465 in your enviroment variables."
-            )
-            print(error_msg)
-        except Exception as e:
-            print(f"[ERROR] Failed to send email to {recipient_email}: {e}")
-            traceback.print_exc()
+        # --- OPTION 2: SMTP (Fallback for Localhost) ---
+        if all([settings.SMTP_USER, settings.SMTP_PASSWORD]):
+            message = EmailMessage()
+            message["From"] = f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL}>"
+            message["To"] = recipient_email
+            message["Subject"] = subject
+            message.set_content(html_content, subtype="html")
+
+            try:
+                # Increase timeout for slow cloud environments like Render
+                await aiosmtplib.send(
+                    message,
+                    hostname=settings.SMTP_HOST,
+                    port=settings.SMTP_PORT,
+                    username=settings.SMTP_USER,
+                    password=settings.SMTP_PASSWORD,
+                    use_tls=settings.SMTP_PORT == 465,
+                    start_tls=settings.SMTP_PORT == 587,
+                    timeout=30  # Increased timeout from default
+                )
+                print(f"[SUCCESS] Email sent via SMTP to {recipient_email}")
+            except aiosmtplib.errors.SMTPConnectTimeoutError:
+                print(f"[ERROR] SMTP Connection Timeout. Render likely blocks port {settings.SMTP_PORT}")
+            except Exception as e:
+                print(f"[ERROR] SMTP Failed: {e}")
+                traceback.print_exc()
+        else:
+            print("[ERROR] No valid email provider configured (Missing Resend key or SMTP credentials).")
 
     async def send_verification_email(self, user: User, token: str):
         """Sends a verification link to the user's email."""
@@ -127,95 +148,6 @@ class EmailService:
         </html>
         """
         await self.send_email(email, subject, html)
-
-    async def diagnose_connection(self, host=None, port=None, user=None, password=None):
-        """
-        Performs a step-by-step SMTP diagnostic to identify 
-        where the connection is hanging or failing.
-        """
-        target_host = host or settings.SMTP_HOST
-        target_port = port or settings.SMTP_PORT
-        target_user = user or settings.SMTP_USER
-        target_pass = password or settings.SMTP_PASSWORD
-
-        report = {
-            "timestamp": time.time(),
-            "config": {
-                "host": target_host,
-                "port": target_port,
-                "user": target_user,
-                "use_tls": target_port == 465,
-                "start_tls": target_port == 587,
-            },
-            "steps": [],
-            "success": False,
-            "error": None
-        }
-
-        def add_step(name, status, detail=None, duration=None):
-            report["steps"].append({
-                "name": name,
-                "status": status,
-                "detail": str(detail) if detail else None,
-                "duration_ms": round(duration * 1000, 2) if duration else None
-            })
-
-        start_time = time.time()
-        
-        # Step 1: DNS Resolution
-        try:
-            dns_start = time.time()
-            ip = socket.gethostbyname(target_host)
-            add_step("DNS Resolution", "SUCCESS", f"Resolved to {ip}", time.time() - dns_start)
-        except Exception as e:
-            add_step("DNS Resolution", "FAILED", e)
-            report["error"] = f"DNS Failed: {e}"
-            return report
-
-        # Step 2: Socket Connection (Connectivity Test)
-        try:
-            sock_start = time.time()
-            s = socket.create_connection((target_host, target_port), timeout=10)
-            s.close()
-            add_step("Socket Connection", "SUCCESS", "Port reachable", time.time() - sock_start)
-        except Exception as e:
-            add_step("Socket Connection", "FAILED", e)
-            report["error"] = f"Socket Failed: {e}. HINT: Render likely blocks port {target_port}"
-            return report
-
-        # Step 3: SMTP Handshake
-        smtp = aiosmtplib.SMTP(
-            hostname=target_host, 
-            port=target_port, 
-            use_tls=target_port == 465,
-            timeout=15
-        )
-        
-        try:
-            handshake_start = time.time()
-            await smtp.connect()
-            add_step("SMTP Connect", "SUCCESS", "EHLO Received", time.time() - handshake_start)
-
-            if target_port == 587:
-                tls_start = time.time()
-                await smtp.starttls()
-                add_step("STARTTLS", "SUCCESS", "Encryption active", time.time() - tls_start)
-
-            login_start = time.time()
-            await smtp.login(target_user, target_pass or "")
-            add_step("SMTP Login", "SUCCESS", f"Authenticated as {target_user}", time.time() - login_start)
-            
-            report["success"] = True
-        except Exception as e:
-            add_step("SMTP Protocol", "FAILED", e)
-            report["error"] = f"Protocol Error: {e}"
-        finally:
-            try:
-                await smtp.quit()
-            except:
-                pass
-
-        return report
 
 # Singleton instance
 email_service = EmailService()

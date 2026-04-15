@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     SMTP_PORT: Optional[int] = 587
     SMTP_USER: Optional[str] = None
     SMTP_PASSWORD: Optional[str] = None
+    RESEND_API_KEY: Optional[str] = None
     EMAILS_FROM_EMAIL: Optional[str] = None
     EMAILS_FROM_NAME: str = "SahyogSync"
 

@@ -77,6 +77,10 @@ class NotificationType(str, enum.Enum):
     CAMPAIGN_INTEREST = "CAMPAIGN_INTEREST" # Volunteer opted-in
     SYSTEM = "SYSTEM"                      # General broadcast
 
+class FeedbackType(str, enum.Enum):
+    REVIEW = "REVIEW"
+    ISSUE = "ISSUE"
+
 # --- Models ---
 
 class Organization(Base):
@@ -368,3 +372,19 @@ class RegistrationVerification(Base):
     hashed_otp: Mapped[str] = mapped_column()
     expires_at: Mapped[datetime] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
+class PlatformFeedback(Base):
+    __tablename__ = "platform_feedback"
+    
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    
+    type: Mapped[FeedbackType] = mapped_column(SQLEnum(FeedbackType))
+    rating: Mapped[Optional[float]] = mapped_column(nullable=True)
+    category: Mapped[Optional[str]] = mapped_column(nullable=True) # e.g. BUG, UI, FEATURE
+    content: Mapped[str] = mapped_column()
+    status: Mapped[str] = mapped_column(default="PENDING") # PENDING, RESOLVED
+    
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped["User"] = relationship()

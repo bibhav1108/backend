@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.app.database import get_db
-from backend.app.models import User
+from backend.app.models import User, NGO_Campaign, Inventory, Volunteer
 from backend.app.api.deps import get_current_user
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional
@@ -25,6 +25,11 @@ class UserRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+class UserStats(BaseModel):
+    total_campaigns: int
+    total_inventory: int
+    total_volunteers: int
 
 # --- Endpoints ---
 
@@ -69,3 +74,38 @@ async def list_org_users(
     result = await db.execute(stmt)
     users = result.scalars().all()
     return users
+
+@router.get("/me/stats", response_model=UserStats)
+async def get_my_stats(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get real-time metrics for the coordinator's organization.
+    """
+    if not current_user.org_id:
+        return {
+            "total_campaigns": 0,
+            "total_inventory": 0,
+            "total_volunteers": 0
+        }
+        
+    from sqlalchemy import func
+    
+    # 1. Count Campaigns
+    campaign_stmt = select(func.count(NGO_Campaign.id)).where(NGO_Campaign.org_id == current_user.org_id)
+    campaign_count = (await db.execute(campaign_stmt)).scalar() or 0
+    
+    # 2. Count Inventory Items
+    inventory_stmt = select(func.count(Inventory.id)).where(Inventory.org_id == current_user.org_id)
+    inventory_count = (await db.execute(inventory_stmt)).scalar() or 0
+    
+    # 3. Count Volunteers
+    volunteer_stmt = select(func.count(Volunteer.id)).where(Volunteer.org_id == current_user.org_id)
+    volunteer_count = (await db.execute(volunteer_stmt)).scalar() or 0
+    
+    return {
+        "total_campaigns": campaign_count,
+        "total_inventory": inventory_count,
+        "total_volunteers": volunteer_count
+    }

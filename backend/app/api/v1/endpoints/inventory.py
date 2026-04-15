@@ -103,6 +103,17 @@ async def update_inventory_item(
         raise HTTPException(status_code=404, detail="Inventory item not found")
 
     update_data = data.model_dump(exclude_unset=True)
+    
+    # Validation: Cannot reduce quantity below reserved amount
+    if "quantity" in update_data:
+        new_qty = update_data["quantity"]
+        if new_qty < item.reserved_quantity:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot reduce '{item.item_name}' quantity to {new_qty}. "
+                       f"It already has {item.reserved_quantity} units reserved."
+            )
+
     for field, value in update_data.items():
         setattr(item, field, value)
     

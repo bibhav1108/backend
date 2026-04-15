@@ -33,6 +33,10 @@ class PublicOrganizationRead(BaseModel):
     class Config:
         from_attributes = True
 
+class OrganizationUpdate(BaseModel):
+    about: Optional[str] = None
+    website_url: Optional[str] = None
+
 class NGORegistrationResponse(BaseModel):
     org_id: int
     org_name: str
@@ -147,3 +151,30 @@ async def get_public_organizations(
     stmt = select(Organization).where(Organization.status == "active")
     result = await db.execute(stmt)
     return result.scalars().all()
+
+@router.patch("/me", response_model=OrganizationRead)
+async def update_my_organization(
+    data: OrganizationUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update the current user's organization profile.
+    """
+    if not current_user.org_id:
+        raise HTTPException(status_code=400, detail="User is not associated with any organization")
+        
+    stmt = select(Organization).where(Organization.id == current_user.org_id)
+    org = (await db.execute(stmt)).scalar_one_or_none()
+    
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+        
+    if data.about is not None:
+        org.about = data.about
+    if data.website_url is not None:
+        org.website_url = data.website_url
+        
+    await db.commit()
+    await db.refresh(org)
+    return org
