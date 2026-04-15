@@ -1,23 +1,16 @@
-import aiosmtplib
-from email.message import EmailMessage
+import asyncio
 from backend.app.config import settings
 from backend.app.models import User
 import traceback
-import time
-import socket
-import ssl
 import resend
 
 class EmailService:
     @property
     def is_configured(self) -> bool:
-        return any([
-            settings.RESEND_API_KEY,
-            all([settings.SMTP_USER, settings.SMTP_PASSWORD, settings.EMAILS_FROM_EMAIL])
-        ])
+        return bool(settings.RESEND_API_KEY)
 
     async def send_email(self, recipient_email: str, subject: str, html_content: str):
-        """Generic async email sender with fallback to logging."""
+        """HTTP-based email sender via Resend API."""
         if not self.is_configured:
             print("\n" + "="*50)
             print(f"📧 [MOCK EMAIL] To: {recipient_email}")
@@ -26,52 +19,32 @@ class EmailService:
             print("="*50 + "\n")
             return
 
-        # --- OPTION 1: RESEND HTTP API (Best for Render/Cloud) ---
-        if settings.RESEND_API_KEY:
-            try:
-                resend.api_key = settings.RESEND_API_KEY
-                
-                # Resend call is synchronous but fast, we wrap in try block
-                params = {
-                    "from": f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL or 'onboarding@resend.dev'}>",
-                    "to": [recipient_email],
-                    "subject": subject,
-                    "html": html_content,
-                }
-                resend.Emails.send(params)
-                print(f"[SUCCESS] Email sent via Resend API to {recipient_email}")
-                return
-            except Exception as e:
-                print(f"[WARNING] Resend API failed: {e}. Falling back to SMTP if available.")
-
-        # --- OPTION 2: SMTP (Fallback for Localhost) ---
-        if all([settings.SMTP_USER, settings.SMTP_PASSWORD]):
-            message = EmailMessage()
-            message["From"] = f"{settings.EMAILS_FROM_NAME} <{settings.EMAILS_FROM_EMAIL}>"
-            message["To"] = recipient_email
-            message["Subject"] = subject
-            message.set_content(html_content, subtype="html")
-
-            try:
-                # Increase timeout for slow cloud environments like Render
-                await aiosmtplib.send(
-                    message,
-                    hostname=settings.SMTP_HOST,
-                    port=settings.SMTP_PORT,
-                    username=settings.SMTP_USER,
-                    password=settings.SMTP_PASSWORD,
-                    use_tls=settings.SMTP_PORT == 465,
-                    start_tls=settings.SMTP_PORT == 587,
-                    timeout=30  # Increased timeout from default
-                )
-                print(f"[SUCCESS] Email sent via SMTP to {recipient_email}")
-            except aiosmtplib.errors.SMTPConnectTimeoutError:
-                print(f"[ERROR] SMTP Connection Timeout. Render likely blocks port {settings.SMTP_PORT}")
-            except Exception as e:
-                print(f"[ERROR] SMTP Failed: {e}")
-                traceback.print_exc()
-        else:
-            print("[ERROR] No valid email provider configured (Missing Resend key or SMTP credentials).")
+        try:
+            resend.api_key = settings.RESEND_API_KEY
+            
+            # --- CRITICAL FIX: RESEND DOMAIN VERIFICATION ---
+            # Resend DOES NOT allow sending from gmail.com/etc unless you verify the domain.
+            # Free tier users MUST use 'onboarding@resend.dev'.
+            from_email = "onboarding@resend.dev" 
+            if settings.EMAILS_FROM_EMAIL and "@resend.dev" not in settings.EMAILS_FROM_EMAIL:
+                print(f"[NOTE] Using 'onboarding@resend.dev' instead of '{settings.EMAILS_FROM_EMAIL}' because only Resend-verified domains are allowed.")
+            
+            params = {
+                "from": f"{settings.EMAILS_FROM_NAME} <{from_email}>",
+                "to": [recipient_email],
+                "subject": subject,
+                "html": html_content,
+            }
+            
+            r = await asyncio.to_thread(resend.Emails.send, params)
+            
+            if hasattr(r, "id"):
+                print(f"[SUCCESS] Email sent via Resend (ID: {r.id}) to {recipient_email}")
+            else:
+                print(f"[ERROR] Resend API returned an unexpected response: {r}")
+        except Exception as e:
+            print(f"[ERROR] Resend API failed: {e}")
+            traceback.print_exc()
 
     async def send_verification_email(self, user: User, token: str):
         """Sends a verification link to the user's email."""
