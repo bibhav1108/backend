@@ -38,7 +38,8 @@ import string
 router = APIRouter()
 
 # --- Shared Assets ---
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "static")
+# Robust pathing: static is in backend/app/static
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "static")
 WELCOME_PHOTO_PATH = os.path.join(STATIC_DIR, "welcome.png")
 
 # --- Helper Functions ---
@@ -542,6 +543,8 @@ async def telegram_webhook(
                         f"🔐 *Password*: `{creds['password']}`\n\n"
                         f"Please log in to the SahyogSync portal to complete your profile and start helping! 🚀"
                     )
+                # Refresh commands for the new volunteer
+                background_tasks.add_task(telegram_service.set_bot_commands, chat_id)
                 await send_and_log(bg=background_tasks, chat_id=chat_id, text=welcome_msg)
                 return {"status": "verified"}
             else:
@@ -631,21 +634,29 @@ async def telegram_webhook(
             await send_and_log(bg=background_tasks, chat_id=chat_id, text=tutorial_msg)
             return {"status": "tutorial_sent"}
 
-        if text == "/about":
-            about_msg = (
-                "ℹ️ **About SahyogSync**\n\n"
-                "SahyogSync is a smart platform designed to connect NGOs, volunteers, and donors for efficient resource allocation and support.\n\n"
-                "Our goal is to ensure that the right help reaches the right place at the right time by streamlining requests, managing resources, and enabling real-time coordination.\n\n"
-                "Key Features:\n"
-                "• Request and track assistance\n"
-                "• Volunteer task management\n"
-                "• Donation and resource coordination\n"
-                "• Real-time updates and transparency\n\n"
-                "---\n\n"
-                "“Powering the Right Help, at the Right Time.”"
-            )
             await send_and_log(bg=background_tasks, chat_id=chat_id, text=about_msg)
             return {"status": "about_sent"}
+
+        if text == "/leaderboard":
+            stmt_lb = (
+                select(Volunteer.name, VolunteerStats.completions)
+                .join(VolunteerStats)
+                .where(VolunteerStats.completions > 0)
+                .order_by(desc(VolunteerStats.completions))
+                .limit(5)
+            )
+            top_vols = (await db.execute(stmt_lb)).all()
+            
+            if not top_vols:
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="🏆 *Leaderboard*: No missions completed yet. Be the first hero! 🦸‍♂️")
+            else:
+                lb_text = "🏆 *SAHYOGSYNC TOP HEROES* 🏆\n\n"
+                for i, (name, count) in enumerate(top_vols, 1):
+                    icon = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "✨"
+                    lb_text += f"{icon} *{name}*: {count} Missions\n"
+                lb_text += "\nKeep up the great work! 🌍🤝"
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text=lb_text)
+            return {"status": "leaderboard_sent"}
 
         if text == "/my_missions":
             # Identify volunteer
@@ -873,6 +884,17 @@ async def telegram_webhook(
                 .limit(1)
             )
             pending = (await db.execute(stmt)).scalar_one_or_none()
+            
+            # --- Expiry Check (15 Minutes) ---
+            if pending:
+                now = datetime.now(timezone.utc)
+                created_at = pending.created_at
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                
+                if (now - created_at) > timedelta(minutes=15):
+                    print(f"[TRACE] Expiring stale donation alert for {chat_id}")
+                    pending = None
             
             if pending:
                 pending.message_body = text

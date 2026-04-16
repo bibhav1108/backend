@@ -12,8 +12,10 @@ import os
 from backend.app.config import settings
 
 from contextlib import asynccontextmanager
-from sqlalchemy import text
-from backend.app.database import engine, Base, run_migrations
+from sqlalchemy import text, delete
+from datetime import datetime, timedelta, timezone
+from backend.app.database import engine, Base, run_migrations, async_session
+from backend.app.models import MarketplaceAlert, InboundMessage
 from backend.app.api.webhooks import router as webhooks_router
 from backend.app.api.volunteers.router import router as volunteers_router
 from backend.app.api.marketplace import router as marketplace_router
@@ -31,6 +33,36 @@ from backend.app.notifications.router import router as notifications_router
 from backend.app.api.audit import router as audit_router
 from backend.app.api.feedback import router as feedback_router
 
+async def run_periodic_cleanup():
+    """
+    Background worker that runs every 12 hours to:
+    1. Clear deduplication logs older than 24h.
+    2. Clear stale [Pending Report] alerts.
+    """
+    while True:
+        try:
+            print("[Maintenance] Starting periodic cleanup...")
+            async with async_session() as db:
+                cutoff_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+                
+                # 1. Cleanup InboundMessage logs
+                stmt1 = delete(InboundMessage).where(InboundMessage.created_at < cutoff_24h)
+                res1 = await db.execute(stmt1)
+                
+                # 2. Cleanup stale pending reports (Never confirmed/processed)
+                stmt2 = delete(MarketplaceAlert).where(
+                    MarketplaceAlert.message_body == "[Pending Report]",
+                    MarketplaceAlert.created_at < cutoff_24h
+                )
+                res2 = await db.execute(stmt2)
+                
+                await db.commit()
+                print(f"[Maintenance] Cleanup finished. Removed {res1.rowcount} logs and {res2.rowcount} stale alerts.")
+        except Exception as e:
+            print(f"[Maintenance ERROR] Cleanup failed: {e}")
+        
+        await asyncio.sleep(12 * 3600) # Run every 12 hours
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Lightweight startup
@@ -47,6 +79,10 @@ async def lifespan(app: FastAPI):
         # 3. Sync Telegram Bot Commands (Quick API call)
         await telegram_service.set_bot_commands()
         print("[Lifespan] Telegram service configured.")
+
+        # 4. Start Background Maintenance
+        asyncio.create_task(run_periodic_cleanup())
+        print("[Lifespan] Background maintenance worker started.")
     except Exception as e:
         print(f"[Lifespan WARNING] Non-critical startup task failed: {e}")
     
