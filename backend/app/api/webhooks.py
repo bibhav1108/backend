@@ -798,10 +798,15 @@ async def telegram_webhook(
                         need.status = NeedStatus.COMPLETED
                         
                         # Recovered Item to Inventory
+                                                
+                        item_name = f"Recovered {need.type.name}"
+                        if need.marketplace_alert and need.marketplace_alert.item and need.marketplace_alert.item != "N/A":
+                            item_name = need.marketplace_alert.item
+
                         recovery_entry = MarketplaceInventory(
                             org_id=need.org_id,
-                            item_name=f"Recovered {need.type.name}",
-                            quantity=1.0, # Placeholder
+                            item_name=item_name,
+                            quantity=1.0, 
                             unit=need.quantity,
                             collected_at=datetime.now(timezone.utc)
                         )

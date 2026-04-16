@@ -92,36 +92,7 @@ async def login(
     }
 
 
-# =========================
-# VERIFY EMAIL
-# =========================
-@router.get("/verify-email")
-async def verify_email(
-    token: str,
-    db: AsyncSession = Depends(get_db)
-):
-    from sqlalchemy import select
-    from backend.app.models import User, Volunteer # Import locally to avoid circulars if any, but model imports are fine
-    
-    stmt = select(User).where(User.verification_token == token)
-    user = (await db.execute(stmt)).scalar_one_or_none()
 
-    if not user:
-        raise HTTPException(status_code=400, detail="Invalid or expired verification token")
-
-    user.is_email_verified = True
-    user.verification_token = None
-
-    # Volunteer bonus
-    stmt_vol = select(Volunteer).where(Volunteer.user_id == user.id)
-    vol = (await db.execute(stmt_vol)).scalar_one_or_none()
-
-    if vol:
-        vol.trust_score += 10
-        vol.trust_tier = TrustTier.ID_VERIFIED
-
-    await db.commit()
-    return {"message": "Email verified"}
 
 
 # =========================

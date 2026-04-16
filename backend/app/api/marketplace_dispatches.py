@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
+from sqlalchemy.orm import joinedload
 from backend.app.database import get_db
 from backend.app.models import (
     MarketplaceDispatch, 
@@ -35,7 +36,7 @@ class VerifyOTPRequest(BaseModel):
 class MarketplaceDispatchResponse(BaseModel):
     id: int
     marketplace_need_id: int
-    volunteer_id: int
+    volunteer_id: Optional[int] = None
     status: DispatchStatus
     created_at: datetime
     otp_used: bool
@@ -195,16 +196,24 @@ async def verify_marketplace_otp(
     dispatch.status = DispatchStatus.COMPLETED 
     
     # Update MarketplaceNeed
-    stmt_need = select(MarketplaceNeed).where(MarketplaceNeed.id == dispatch.marketplace_need_id)
+    stmt_need = (
+        select(MarketplaceNeed)
+        .options(joinedload(MarketplaceNeed.marketplace_alert))
+        .where(MarketplaceNeed.id == dispatch.marketplace_need_id)
+    )
     need = (await db.execute(stmt_need)).scalar_one()
     need.status = NeedStatus.COMPLETED
 
     # 1. AUTO-POPULATE MarketplaceInventory (The 'Recovery' History)
+    item_name = f"Recovered {need.type.name}"
+    if need.marketplace_alert and need.marketplace_alert.item and need.marketplace_alert.item != "N/A":
+        item_name = need.marketplace_alert.item
+
     recovery_entry = MarketplaceInventory(
         org_id=current_user.org_id,
-        item_name=f"Recovered {need.type.name}", # e.g. Recovered FOOD
-        quantity=1.0, # Placeholder quantity if not parsed as float
-        unit=need.quantity, # Store original quantity string as unit/desc
+        item_name=item_name,
+        quantity=1.0, 
+        unit=need.quantity, 
         collected_at=datetime.now(timezone.utc)
     )
     db.add(recovery_entry)

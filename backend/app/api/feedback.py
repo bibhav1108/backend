@@ -68,6 +68,7 @@ async def submit_feedback(
 
 @router.get("/list", response_model=List[FeedbackRead])
 async def list_feedback(
+    type_filter: Optional[FeedbackType] = None,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin)
 ):
@@ -77,27 +78,50 @@ async def list_feedback(
     stmt = (
         select(PlatformFeedback, User.full_name, User.role)
         .join(User, PlatformFeedback.user_id == User.id)
-        .order_by(PlatformFeedback.created_at.desc())
     )
+
+    if type_filter:
+        stmt = stmt.where(PlatformFeedback.type == type_filter)
+        
+    stmt = stmt.order_by(PlatformFeedback.created_at.desc())
     result = await db.execute(stmt)
     
     feedback_list = []
     for row in result:
-        fb, name, role = row
-        feedback_list.append(
-            FeedbackRead(
-                id=fb.id,
-                user_id=fb.user_id,
-                user_name=name or "Anonymous",
-                user_role=role.value,
-                type=fb.type,
-                rating=fb.rating,
-                category=fb.category,
-                content=fb.content,
-                status=fb.status,
-                created_at=fb.created_at
+        # row behaves like a tuple or Row object depending on SQLAlchemy version
+        # [PlatformFeedback, User.full_name, User.role]
+        fb = row[0]
+        raw_name = row[1]
+        raw_role = row[2]
+        
+        # 🛡️ Defensive Field Extraction
+        safe_name = str(raw_name) if raw_name else "Anonymous"
+        
+        if raw_role:
+            # Handle both Enum objects and raw strings
+            role_label = str(raw_role.value) if hasattr(raw_role, "value") else str(raw_role)
+        else:
+            role_label = "USER"
+        
+        try:
+            feedback_list.append(
+                FeedbackRead(
+                    id=fb.id,
+                    user_id=fb.user_id,
+                    user_name=safe_name,
+                    user_role=role_label,
+                    type=fb.type,
+                    rating=fb.rating if fb.rating is not None else None,
+                    category=fb.category or "GENERAL",
+                    content=fb.content or "",
+                    status=fb.status or "PENDING",
+                    created_at=fb.created_at or datetime.now()
+                )
             )
-        )
+        except Exception as e:
+            # If one row is corrupted, skip it rather than failing the whole request
+            print(f"[Feedback Fix] Skipping malformed row {fb.id if fb else '???'}: {e}")
+            continue
     
     return feedback_list
 

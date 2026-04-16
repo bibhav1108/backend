@@ -70,7 +70,8 @@ async def run_migrations():
             'notificationtype': ['DONOR_ALERT', 'MISSION_ACCEPTED', 'MISSION_COMPLETED', 'MISSION_CANCELLED', 'CAMPAIGN_INTEREST', 'SYSTEM'],
             'userrole': ['SYSTEM_ADMIN', 'NGO_COORDINATOR', 'VOLUNTEER'],
             'joinrequeststatus': ['PENDING', 'APPROVED', 'REJECTED'],
-            'volunteerstatus': ['AVAILABLE', 'BUSY', 'ON_MISSION', 'INACTIVE']
+            'volunteerstatus': ['AVAILABLE', 'BUSY', 'ON_MISSION', 'INACTIVE'],
+            'feedbacktype': ['REVIEW', 'ISSUE']
         }
     
         
@@ -225,6 +226,20 @@ async def run_migrations():
             );
             CREATE INDEX IF NOT EXISTS ix_notifications_org_id ON notifications (org_id);
             CREATE INDEX IF NOT EXISTS ix_notifications_is_read ON notifications (is_read);
+        """))
+
+        # Create Platform Feedback Table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS platform_feedback (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                type feedbacktype NOT NULL,
+                rating FLOAT,
+                category VARCHAR,
+                content TEXT NOT NULL,
+                status VARCHAR DEFAULT 'PENDING',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         """))
 
         # Ensure Column Consistency for Volunteers (V1.5+)
