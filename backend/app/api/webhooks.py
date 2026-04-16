@@ -27,7 +27,7 @@ from backend.app.models import (
     UserRole,
     VolunteerStatus
 )
-from backend.app.volunteers.service import onboard_volunteer_via_telegram
+from backend.app.api.volunteers.service import onboard_volunteer_via_telegram
 from backend.app.services.otp import generate_otp_pair, verify_otp
 from backend.app.services.telegram_service import telegram_service
 from backend.app.services.ai_service import ai_service

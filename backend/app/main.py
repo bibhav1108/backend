@@ -14,22 +14,22 @@ from backend.app.config import settings
 from contextlib import asynccontextmanager
 from sqlalchemy import text
 from backend.app.database import engine, Base, run_migrations
-from backend.app.api.v1.endpoints.webhooks import router as webhooks_router
-from backend.app.volunteers.router import router as volunteers_router
-from backend.app.api.v1.endpoints.marketplace import router as marketplace_router
-from backend.app.api.v1.endpoints.marketplace_dispatches import router as m_dispatches_router
+from backend.app.api.webhooks import router as webhooks_router
+from backend.app.api.volunteers.router import router as volunteers_router
+from backend.app.api.marketplace import router as marketplace_router
+from backend.app.api.marketplace_dispatches import router as m_dispatches_router
 from backend.app.services.telegram_service import telegram_service
-from backend.app.api.v1.endpoints.auth import router as auth_router
-from backend.app.api.v1.endpoints.inventory import router as inventory_router
-from backend.app.api.v1.endpoints.organizations import router as organizations_router
-from backend.app.api.v1.endpoints.users import router as users_router
-from backend.app.api.v1.endpoints.meta import router as meta_router
-from backend.app.api.v1.endpoints.campaigns import router as campaigns_router
-from backend.app.api.v1.endpoints.marketplace_inventory import router as m_inventory_router
-from backend.app.api.v1.endpoints.admin import router as admin_router
+from backend.app.api.auth import router as auth_router
+from backend.app.api.inventory import router as inventory_router
+from backend.app.api.organizations import router as organizations_router
+from backend.app.api.users import router as users_router
+from backend.app.api.meta import router as meta_router
+from backend.app.api.campaigns import router as campaigns_router
+from backend.app.api.marketplace_inventory import router as m_inventory_router
+from backend.app.api.admin import router as admin_router
 from backend.app.notifications.router import router as notifications_router
-from backend.app.api.v1.endpoints.audit import router as audit_router
-from backend.app.api.v1.endpoints.feedback import router as feedback_router
+from backend.app.api.audit import router as audit_router
+from backend.app.api.feedback import router as feedback_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -81,22 +81,22 @@ else:
     print(f"[WARNING] Static directory not found at: {static_path}")
 
 # Include Routers
-app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
-app.include_router(organizations_router, prefix="/api/v1/organizations", tags=["organizations"])
-app.include_router(users_router, prefix="/api/v1/users", tags=["users"])
-app.include_router(meta_router, prefix="/api/v1", tags=["metadata"])
-app.include_router(webhooks_router, prefix="/api/v1/webhooks", tags=["webhooks"])
-app.include_router(volunteers_router, prefix="/api/v1/volunteers", tags=["volunteers"])
-app.include_router(marketplace_router, prefix="/api/v1/marketplace/needs", tags=["marketplace"])
-app.include_router(marketplace_router, prefix="/api/v1/needs", tags=["marketplace-legacy"]) # Compatibility
-app.include_router(m_dispatches_router, prefix="/api/v1/marketplace/dispatches", tags=["marketplace"])
-app.include_router(inventory_router, prefix="/api/v1/inventory", tags=["inventory"])
-app.include_router(campaigns_router, prefix="/api/v1/campaigns", tags=["campaigns"])
-app.include_router(m_inventory_router, prefix="/api/v1/marketplace/inventory", tags=["marketplace"])
-app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
-app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
-app.include_router(audit_router, prefix="/api/v1/audit", tags=["audit"])
-app.include_router(feedback_router, prefix="/api/v1/feedback", tags=["feedback"])
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(organizations_router, prefix="/api/organizations", tags=["organizations"])
+app.include_router(users_router, prefix="/api/users", tags=["users"])
+app.include_router(meta_router, prefix="/api", tags=["metadata"])
+app.include_router(webhooks_router, prefix="/api/webhooks", tags=["webhooks"])
+app.include_router(volunteers_router, prefix="/api/volunteers", tags=["volunteers"])
+app.include_router(marketplace_router, prefix="/api/marketplace/needs", tags=["marketplace"])
+app.include_router(marketplace_router, prefix="/api/needs", tags=["marketplace-legacy"]) # Compatibility
+app.include_router(m_dispatches_router, prefix="/api/marketplace/dispatches", tags=["marketplace"])
+app.include_router(inventory_router, prefix="/api/inventory", tags=["inventory"])
+app.include_router(campaigns_router, prefix="/api/campaigns", tags=["campaigns"])
+app.include_router(m_inventory_router, prefix="/api/marketplace/inventory", tags=["marketplace"])
+app.include_router(notifications_router, prefix="/api/notifications", tags=["notifications"])
+app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
+app.include_router(audit_router, prefix="/api/audit", tags=["audit"])
+app.include_router(feedback_router, prefix="/api/feedback", tags=["feedback"])
 
 @app.get("/")
 async def root():

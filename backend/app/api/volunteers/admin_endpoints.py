@@ -5,6 +5,7 @@ from typing import List, Optional
 from backend.app.database import get_db
 from backend.app.models import Volunteer, VolunteerStats, User, UserRole, TrustTier, AuditTrail
 from backend.app.api.deps import get_current_user
+from .service import build_volunteer_response
 from .schemas import VolunteerCreate, VolunteerResponse, TrustUpdate
 
 router = APIRouter()
@@ -31,12 +32,7 @@ async def list_volunteers(
     vols = []
     for row in result:
         v, comp, noshow, hours, img_url = row
-        resp = VolunteerResponse.model_validate(v)
-        resp.completions = comp or 0
-        resp.no_shows = noshow or 0
-        resp.hours_served = hours or 0.0
-        resp.profile_image_url = img_url
-        vols.append(resp)
+        vols.append(build_volunteer_response(v, comp, noshow, hours, img_url))
         
     return vols
 
@@ -79,10 +75,7 @@ async def register_volunteer(
     await db.commit()
     await db.refresh(volunteer)
     
-    resp = VolunteerResponse.model_validate(volunteer)
-    resp.completions = 0
-    resp.no_shows = 0
-    return resp
+    return build_volunteer_response(volunteer)
 
 @router.patch("/{vol_id}/trust", response_model=VolunteerResponse)
 async def update_trust_tier(
@@ -134,9 +127,4 @@ async def verify_volunteer_id(
     )
     res = (await db.execute(stmt)).first()
     v, comp, noshow, hours, img_url = res
-    resp = VolunteerResponse.model_validate(v)
-    resp.completions = comp or 0
-    resp.no_shows = noshow or 0
-    resp.hours_served = hours or 0.0
-    resp.profile_image_url = img_url
-    return resp
+    return build_volunteer_response(v, comp, noshow, hours, img_url)

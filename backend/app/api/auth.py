@@ -1,18 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from backend.app.database import get_db
-from backend.app.models import User, Organization, Volunteer, TrustTier, UserRole
+from backend.app.models import TrustTier, UserRole
 from backend.app.services.auth_utils import verify_password, create_access_token, get_password_hash
 from backend.app.services.email_service import email_service
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from typing import Optional
-import uuid
 import random
 import string
 from datetime import datetime, timedelta, timezone
 from backend.app.config import settings
+from backend.app.crud.user_crud import user_crud
+from backend.app.crud.org_crud import org_crud
+
 router = APIRouter()
 
 # =========================
@@ -23,7 +24,7 @@ class Token(BaseModel):
     token_type: str
     org_id: Optional[int] = None
     org_name: Optional[str] = "Unknown"
-    role: str  # 👈 IMPORTANT
+    role: str 
 
 class ForgotPasswordRequest(BaseModel):
     email: Optional[str] = None
@@ -34,24 +35,6 @@ class ResetPasswordRequest(BaseModel):
     phone_number: Optional[str] = None
     otp: str
     new_password: str
-
-async def find_user_by_email_or_phone(db: AsyncSession, email: Optional[str], phone_number: Optional[str]):
-    """Helper to find a user by either email or linked volunteer phone."""
-    if email:
-        stmt = select(User).where(User.email == email)
-        return (await db.execute(stmt)).scalar_one_or_none()
-    
-    if phone_number:
-        # 1. Match Volunteer Phone
-        stmt_vol = select(Volunteer).where(Volunteer.phone_number.like(f"%{phone_number}"))
-        vol = (await db.execute(stmt_vol)).scalar_one_or_none()
-        
-        if vol and vol.user_id:
-            # 2. Get User
-            stmt_user = select(User).where(User.id == vol.user_id)
-            return (await db.execute(stmt_user)).scalar_one_or_none(), vol
-    
-    return None, None
 
 
 # =========================
@@ -65,14 +48,9 @@ async def login(
     """
     Login endpoint for all users.
     """
-
-    # 1. Find user
-    stmt = select(User).where(
-        (User.email == form_data.username) |
-        (User.username == form_data.username)
-    )
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
+    # 1. Find user using CRUD
+    user = await user_crud.get_by_email(db, email=form_data.username) or \
+           await user_crud.get_by_username(db, username=form_data.username)
 
     # 2. Verify credentials
     if not user or not verify_password(form_data.password, user.hashed_password):
@@ -82,16 +60,13 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 3. Get org (if exists)
-    org = None
-    if user.org_id:
-        org_stmt = select(Organization).where(Organization.id == user.org_id)
-        org = (await db.execute(org_stmt)).scalar_one_or_none()
+    # 3. Get org using CRUD
+    org = await org_crud.get(db, user.org_id) if user.org_id else None
 
     # 4. Normalize role
     role_value = user.role.value if isinstance(user.role, UserRole) else user.role
 
-    # 5. Check Org Approval Status (Only for NGO/Volunteer roles, skip for SYSTEM_ADMIN)
+    # 5. Check Org Approval Status
     if role_value != UserRole.SYSTEM_ADMIN and org and org.status == "pending":
          raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -104,17 +79,16 @@ async def login(
         data={
             "sub": sub_val,
             "org_id": user.org_id,
-            "role": role_value  # 👈 CLEAN STRING
+            "role": role_value 
         }
     )
 
-    # 6. Return response
     return {
         "access_token": access_token,
         "token_type": "bearer",
         "org_id": user.org_id,
         "org_name": org.name if org else "Unknown",
-        "role": role_value  # 👈 FRONTEND USES THIS
+        "role": role_value 
     }
 
 
@@ -126,6 +100,9 @@ async def verify_email(
     token: str,
     db: AsyncSession = Depends(get_db)
 ):
+    from sqlalchemy import select
+    from backend.app.models import User, Volunteer # Import locally to avoid circulars if any, but model imports are fine
+    
     stmt = select(User).where(User.verification_token == token)
     user = (await db.execute(stmt)).scalar_one_or_none()
 
@@ -144,9 +121,6 @@ async def verify_email(
         vol.trust_tier = TrustTier.ID_VERIFIED
 
     await db.commit()
-
-    from fastapi.responses import RedirectResponse
-    verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token}"
     return {"message": "Email verified"}
 
 
@@ -163,18 +137,7 @@ async def forgot_password(
     if not data.email and not data.phone_number:
         raise HTTPException(status_code=400, detail="Either Email or Phone Number is required")
 
-    user = None
-    volunteer = None
-
-    if data.email:
-        stmt = select(User).where(User.email == data.email)
-        user = (await db.execute(stmt)).scalar_one_or_none()
-    elif data.phone_number:
-        stmt_vol = select(Volunteer).where(Volunteer.phone_number.like(f"%{data.phone_number}"))
-        volunteer = (await db.execute(stmt_vol)).scalar_one_or_none()
-        if volunteer and volunteer.user_id:
-            stmt_user = select(User).where(User.id == volunteer.user_id)
-            user = (await db.execute(stmt_user)).scalar_one_or_none()
+    user, volunteer = await user_crud.find_by_email_or_phone(db, data.email, data.phone_number)
 
     # To prevent account enumeration, return success even if not found
     generic_msg = "If your account is registered, you will receive an OTP shortly."
@@ -188,19 +151,13 @@ async def forgot_password(
 
     await db.commit()
 
-    # Determine delivery channel
     if data.phone_number and volunteer and volunteer.telegram_chat_id:
-        # Send via Telegram
         await telegram_service.send_password_reset_otp(volunteer.telegram_chat_id, otp)
         return {"message": "OTP sent to your Telegram Sahyog bot."}
     elif user.email:
-        # Send via Email
         await email_service.send_password_reset_otp(user, otp)
         return {"message": "OTP sent to your email."}
     else:
-        # Fallback if phone was entered but not active on telegram
-        # and no email is available. 
-        # In this case we can't do much, return generic success but maybe log it.
         return {"message": generic_msg}
 
 
@@ -215,16 +172,7 @@ async def reset_password(
     if not data.email and not data.phone_number:
         raise HTTPException(status_code=400, detail="Email or Phone Number is required")
 
-    user = None
-    if data.email:
-        stmt = select(User).where(User.email == data.email)
-        user = (await db.execute(stmt)).scalar_one_or_none()
-    elif data.phone_number:
-        stmt_vol = select(Volunteer).where(Volunteer.phone_number.like(f"%{data.phone_number}"))
-        volunteer = (await db.execute(stmt_vol)).scalar_one_or_none()
-        if volunteer and volunteer.user_id:
-            stmt_user = select(User).where(User.id == volunteer.user_id)
-            user = (await db.execute(stmt_user)).scalar_one_or_none()
+    user, _ = await user_crud.find_by_email_or_phone(db, data.email, data.phone_number)
 
     if not user or user.password_reset_otp != data.otp:
         raise HTTPException(status_code=400, detail="Invalid OTP or Identifer")
