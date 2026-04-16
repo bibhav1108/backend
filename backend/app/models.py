@@ -64,6 +64,12 @@ class JoinRequestStatus(str, enum.Enum):
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
 
+class VolunteerStatus(str, enum.Enum):
+    AVAILABLE = "AVAILABLE"     # Ready for missions
+    BUSY = "BUSY"               # Temporary break (manually set)
+    ON_MISSION = "ON_MISSION"   # Currently working (auto-set)
+    INACTIVE = "INACTIVE"       # Long term away
+
 class UserRole(str, enum.Enum):
     SYSTEM_ADMIN = "SYSTEM_ADMIN"
     NGO_COORDINATOR = "NGO_COORDINATOR"
@@ -150,10 +156,11 @@ class Volunteer(Base):
     trust_tier: Mapped[TrustTier] = mapped_column(SQLEnum(TrustTier), default=TrustTier.UNVERIFIED)
     trust_score: Mapped[int] = mapped_column(default=0)
     id_verified: Mapped[bool] = mapped_column(default=False)
+    status: Mapped[VolunteerStatus] = mapped_column(SQLEnum(VolunteerStatus), default=VolunteerStatus.AVAILABLE)
     
     skills: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
     zone: Mapped[Optional[str]] = mapped_column(nullable=True)
-    
+    aadhaar_last_4: Mapped[Optional[str]] = mapped_column(nullable=True)
     location = Column(Geometry(geometry_type='POINT', srid=4326), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 

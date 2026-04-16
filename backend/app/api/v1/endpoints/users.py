@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
+import os
+import shutil
+import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.app.database import get_db
@@ -109,3 +112,69 @@ async def get_my_stats(
         "total_inventory": inventory_count,
         "total_volunteers": volunteer_count
     }
+
+@router.post("/me/image")
+async def upload_profile_image(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Securely upload and update any logged-in user's profile image."""
+    # 1. Validate File Type
+    if file.content_type not in ["image/jpeg", "image/png", "image/webp"]:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG and WEBP images are supported")
+
+    # 2. Prepare Directory
+    static_dir = os.path.join("backend", "app", "static", "profiles")
+    if not os.path.exists(static_dir):
+        os.makedirs(static_dir, exist_ok=True)
+
+    # 3. Generate Unique Filename
+    file_ext = file.filename.split(".")[-1]
+    unique_filename = f"user_{current_user.id}_{uuid.uuid4().hex[:8]}.{file_ext}"
+    file_path = os.path.join(static_dir, unique_filename)
+
+    # 4. Save File
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save image: {str(e)}")
+
+    # 5. Update User Record
+    new_url = f"/static/profiles/{unique_filename}"
+    current_user.profile_image_url = new_url
+    await db.commit()
+
+    return {"profile_image_url": new_url, "message": "Profile image updated successfully"}
+
+@router.delete("/me/image")
+async def remove_profile_image(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Revert user profile picture to default. 
+    Deletes the physical file if it exists in the profiles directory.
+    """
+    if not current_user.profile_image_url:
+        return {"message": "No profile image to remove"}
+
+    # 1. Physical Cleanup (Only if it's a managed upload)
+    if "/static/profiles/" in current_user.profile_image_url:
+        # Resolve path: project_root / backend / app / static / profiles / filename
+        filename = current_user.profile_image_url.split("/")[-1]
+        static_dir = os.path.join("backend", "app", "static", "profiles")
+        file_path = os.path.join(static_dir, filename)
+        
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            print(f"[WARNING] Failed to delete file {file_path}: {e}")
+
+    # 2. Reset DB Record
+    current_user.profile_image_url = None
+    await db.commit()
+
+    return {"message": "Profile image removed and reverted to default"}

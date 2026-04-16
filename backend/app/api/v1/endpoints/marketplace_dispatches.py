@@ -10,7 +10,8 @@ from backend.app.models import (
     NeedStatus, 
     User, 
     VolunteerStats,
-    MarketplaceInventory
+    MarketplaceInventory,
+    VolunteerStatus
 )
 from backend.app.api.deps import get_current_user
 from backend.app.services.otp import verify_otp
@@ -81,6 +82,11 @@ async def create_marketplace_dispatch(
     if len(volunteers) != len(data.volunteer_ids):
         raise HTTPException(status_code=404, detail="One or more volunteers not found in your organization")
     
+    # Check availability
+    for v in volunteers:
+        if v.status != VolunteerStatus.AVAILABLE:
+            raise HTTPException(status_code=400, detail=f"Volunteer {v.name} is not available for dispatch (Status: {v.status.value})")
+    
     # 3. Create Dispatches and Notify
     created_dispatches = []
     for volunteer in volunteers:
@@ -109,12 +115,18 @@ async def create_marketplace_dispatch(
     esc_qty = telegram_service.escape_markdown(need.quantity)
     esc_addr = telegram_service.escape_markdown(need.pickup_address)
 
+    # Optional Map Link
+    nav_link = ""
+    if need.latitude and need.longitude:
+        nav_link = f"🗺️ *Map*: [View Pickup Spot](https://www.google.com/maps/search/?api=1&query={need.latitude},{need.longitude})\n"
+
     body = (
         f"🚨 *New Donation Pickup ALERT*\n\n"
         f"Hero, you have been invited to collect a donor's contribution:\n"
         f"📦 *Type*: {esc_type}\n"
         f"🔢 *Qty*: {esc_qty}\n"
-        f"📍 *Pickup*: {esc_addr}\n\n"
+        f"📍 *Pickup*: {esc_addr}\n"
+        f"{nav_link}\n"
         "⚡ *ACT FAST*: This mission is available on a first-come, first-served basis. Tap accept now to claim it! 🤝"
     )
     
@@ -199,6 +211,11 @@ async def verify_marketplace_otp(
 
     # 2. Update VolunteerStats
     await increment_volunteer_completions(db, dispatch.volunteer_id)
+
+    # 3. Reset Volunteer Status to AVAILABLE
+    stmt_vol = select(Volunteer).where(Volunteer.id == dispatch.volunteer_id)
+    volunteer = (await db.execute(stmt_vol)).scalar_one()
+    volunteer.status = VolunteerStatus.AVAILABLE
 
     await db.commit()
 

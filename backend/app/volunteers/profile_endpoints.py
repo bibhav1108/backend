@@ -1,12 +1,18 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database import get_db
-from backend.app.models import User, UserRole
+from backend.app.models import User, UserRole, VolunteerStatus
 from backend.app.api.deps import get_current_user
 from backend.app.services.email_service import email_service
-from .schemas import VolunteerProfileUpdate, VolunteerProfileResponse, EmailUpdateRequest, EmailVerifyRequest
+from .schemas import (
+    VolunteerProfileUpdate, 
+    VolunteerProfileResponse, 
+    EmailUpdateRequest, 
+    EmailVerifyRequest,
+    VolunteerStatusUpdate,
+    IDVerificationRequest
+)
 from .service import get_my_volunteer
-import uuid
 import random
 import string
 from datetime import datetime, timedelta, timezone
@@ -33,11 +39,13 @@ async def get_profile(
         trust_tier=v.trust_tier,
         trust_score=v.trust_score,
         id_verified=v.id_verified,
+        aadhaar_last_4=v.aadhaar_last_4,
         skills=v.skills,
         zone=v.zone,
         completions=v.stats.completions if v.stats else 0,
         hours_served=v.stats.hours_served if v.stats else 0.0,
-        profile_image_url=current_user.profile_image_url
+        profile_image_url=current_user.profile_image_url,
+        status=v.status
     )
 
 @router.patch("/me", response_model=VolunteerProfileResponse)
@@ -72,11 +80,13 @@ async def update_profile(
         trust_tier=v.trust_tier,
         trust_score=v.trust_score,
         id_verified=v.id_verified,
+        aadhaar_last_4=v.aadhaar_last_4,
         skills=v.skills,
         zone=v.zone,
         completions=v.stats.completions if v.stats else 0,
         hours_served=v.stats.hours_served if v.stats else 0.0,
-        profile_image_url=current_user.profile_image_url
+        profile_image_url=current_user.profile_image_url,
+        status=v.status
     )
 
 @router.post("/me/email/request-otp")
@@ -122,10 +132,64 @@ async def verify_email_update_otp(
     # Optional: Update volunteer trust score
     v = await get_my_volunteer(db, current_user.id)
     if v:
-        from backend.app.models import TrustTier
         v.trust_score += 10
-        v.trust_tier = TrustTier.ID_VERIFIED
+        # Email verification no longer auto-sets ID_VERIFIED
     
     await db.commit()
     
     return {"message": "Email updated and verified successfully."}
+
+@router.patch("/me/status", response_model=VolunteerProfileResponse)
+async def update_status(
+    data: VolunteerStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Allow a volunteer to manually toggle their availability status (AVAILABLE/BUSY)."""
+    if current_user.role != UserRole.VOLUNTEER:
+        raise HTTPException(status_code=403, detail="Only volunteers can access this endpoint")
+        
+    v = await get_my_volunteer(db, current_user.id)
+    
+    # Validation: Volunteers cannot manually set themselves to ON_MISSION
+    if data.status == VolunteerStatus.ON_MISSION:
+        raise HTTPException(status_code=400, detail="Cannot manually set status to ON_MISSION. This is automated.")
+        
+    v.status = data.status
+    await db.commit()
+    await db.refresh(v)
+    
+    return VolunteerProfileResponse(
+        id=v.id,
+        name=v.name,
+        phone_number=v.phone_number,
+        email=current_user.email,
+        is_active=v.telegram_active,
+        is_email_verified=current_user.is_email_verified,
+        trust_tier=v.trust_tier,
+        trust_score=v.trust_score,
+        id_verified=v.id_verified,
+        aadhaar_last_4=v.aadhaar_last_4,
+        skills=v.skills,
+        zone=v.zone,
+        completions=v.stats.completions if v.stats else 0,
+        hours_served=v.stats.hours_served if v.stats else 0.0,
+        profile_image_url=current_user.profile_image_url,
+        status=v.status
+    )
+
+@router.patch("/me/id-verify")
+async def submit_id_verification(
+    data: IDVerificationRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Volunteer submits last 4 digits of Aadhaar for manual admin review."""
+    if current_user.role != UserRole.VOLUNTEER:
+        raise HTTPException(status_code=403, detail="Only volunteers can access this endpoint")
+        
+    v = await get_my_volunteer(db, current_user.id)
+    v.aadhaar_last_4 = data.aadhaar_last_4
+    
+    await db.commit()
+    return {"message": "ID submitted for verification. Admin will review it soon."}

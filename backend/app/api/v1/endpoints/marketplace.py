@@ -62,13 +62,37 @@ class MarketplaceAlertResponse(BaseModel):
     created_at: datetime
     is_confirmed: bool
     is_processed: bool
-
-    class Config:
-        from_attributes = True
+class LocationUpdate(BaseModel):
+    latitude: float
+    longitude: float
 
 # --- Router ---
 
 router = APIRouter()
+
+@router.patch("/alerts/{alert_id}/location", response_model=MarketplaceAlertResponse)
+async def update_alert_location(
+    alert_id: int,
+    data: LocationUpdate,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Allow donors to update their pickup coordinates via the web map picker.
+    Public endpoint (relies on ID obscurity for minimal security).
+    """
+    stmt = select(MarketplaceAlert).where(MarketplaceAlert.id == alert_id)
+    alert = (await db.execute(stmt)).scalar_one_or_none()
+    
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+        
+    alert.latitude = data.latitude
+    alert.longitude = data.longitude
+    # Potentially add reverse geocoding here in the future to update alert.location text
+    
+    await db.commit()
+    await db.refresh(alert)
+    return alert
 
 @router.post("/", response_model=MarketplaceNeedResponse, status_code=status.HTTP_201_CREATED)
 async def create_marketplace_need(

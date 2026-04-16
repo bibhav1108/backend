@@ -8,6 +8,8 @@ from backend.app.api.deps import get_current_user
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import datetime
+import re
+from pydantic import field_validator
 
 router = APIRouter()
 
@@ -23,6 +25,20 @@ class NGORegistrationRequest(BaseModel):
     admin_name: str = Field(..., example="Amit Singh")
     admin_email: EmailStr = Field(..., example="amit@helpinghands.org")
     admin_password: str = Field(..., min_length=8, example="securePassword123")
+
+    @field_validator('admin_password')
+    @classmethod
+    def password_complexity(cls, v):
+        if not re.search(r"[A-Za-z]", v) or not re.search(r"\d", v):
+            raise ValueError('Password must contain at least one letter and one number')
+        return v
+
+    @field_validator('org_phone')
+    @classmethod
+    def phone_validation(cls, v):
+        if not re.match(r"^\+?[\d\s-]{10,}$", v):
+            raise ValueError('Invalid phone number format. Use at least 10 digits.')
+        return v
 
 class PublicOrganizationRead(BaseModel):
     id: int

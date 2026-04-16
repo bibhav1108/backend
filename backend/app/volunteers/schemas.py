@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
-from backend.app.models import TrustTier
+from backend.app.models import TrustTier, VolunteerStatus
 
 class VolunteerCreate(BaseModel):
     name: str = Field(..., example="Rohit Sharma")
@@ -18,6 +18,8 @@ class VolunteerResponse(BaseModel):
     trust_tier: TrustTier
     trust_score: int = 0
     id_verified: bool = False
+    aadhaar_last_4: Optional[str] = None
+    status: VolunteerStatus = VolunteerStatus.AVAILABLE
     
     # Stats integrated for Dashboard view
     completions: int = 0
@@ -49,6 +51,8 @@ class VolunteerProfileResponse(BaseModel):
     trust_tier: TrustTier
     trust_score: int
     id_verified: bool
+    aadhaar_last_4: Optional[str] = None
+    status: VolunteerStatus = VolunteerStatus.AVAILABLE
     skills: Optional[List[str]]
     zone: Optional[str]
     completions: int
@@ -58,9 +62,15 @@ class VolunteerProfileResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class VolunteerStatusUpdate(BaseModel):
+    status: VolunteerStatus
+
 class EmailUpdateRequest(BaseModel):
     new_email: EmailStr
 
 class EmailVerifyRequest(BaseModel):
     otp: str
+
+class IDVerificationRequest(BaseModel):
+    aadhaar_last_4: str = Field(..., min_length=4, max_length=4, pattern=r"^\d{4}$")
 

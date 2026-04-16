@@ -124,5 +124,19 @@ async def verify_volunteer_id(
     v.trust_score += 50
     
     await db.commit()
-    await db.refresh(v)
-    return v
+    
+    # Re-fetch with stats for the response
+    stmt = (
+        select(Volunteer, VolunteerStats.completions, VolunteerStats.no_shows, VolunteerStats.hours_served, User.profile_image_url)
+        .outerjoin(VolunteerStats, Volunteer.id == VolunteerStats.volunteer_id)
+        .outerjoin(User, Volunteer.user_id == User.id)
+        .where(Volunteer.id == vol_id)
+    )
+    res = (await db.execute(stmt)).first()
+    v, comp, noshow, hours, img_url = res
+    resp = VolunteerResponse.model_validate(v)
+    resp.completions = comp or 0
+    resp.no_shows = noshow or 0
+    resp.hours_served = hours or 0.0
+    resp.profile_image_url = img_url
+    return resp

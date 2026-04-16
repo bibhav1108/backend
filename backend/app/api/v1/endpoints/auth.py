@@ -26,12 +26,32 @@ class Token(BaseModel):
     role: str  # 👈 IMPORTANT
 
 class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
 
 class ResetPasswordRequest(BaseModel):
-    email: EmailStr
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
     otp: str
     new_password: str
+
+async def find_user_by_email_or_phone(db: AsyncSession, email: Optional[str], phone_number: Optional[str]):
+    """Helper to find a user by either email or linked volunteer phone."""
+    if email:
+        stmt = select(User).where(User.email == email)
+        return (await db.execute(stmt)).scalar_one_or_none()
+    
+    if phone_number:
+        # 1. Match Volunteer Phone
+        stmt_vol = select(Volunteer).where(Volunteer.phone_number.like(f"%{phone_number}"))
+        vol = (await db.execute(stmt_vol)).scalar_one_or_none()
+        
+        if vol and vol.user_id:
+            # 2. Get User
+            stmt_user = select(User).where(User.id == vol.user_id)
+            return (await db.execute(stmt_user)).scalar_one_or_none(), vol
+    
+    return None, None
 
 
 # =========================
@@ -138,11 +158,29 @@ async def forgot_password(
     data: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(User).where(User.email == data.email)
-    user = (await db.execute(stmt)).scalar_one_or_none()
+    from backend.app.services.telegram_service import telegram_service
+    
+    if not data.email and not data.phone_number:
+        raise HTTPException(status_code=400, detail="Either Email or Phone Number is required")
+
+    user = None
+    volunteer = None
+
+    if data.email:
+        stmt = select(User).where(User.email == data.email)
+        user = (await db.execute(stmt)).scalar_one_or_none()
+    elif data.phone_number:
+        stmt_vol = select(Volunteer).where(Volunteer.phone_number.like(f"%{data.phone_number}"))
+        volunteer = (await db.execute(stmt_vol)).scalar_one_or_none()
+        if volunteer and volunteer.user_id:
+            stmt_user = select(User).where(User.id == volunteer.user_id)
+            user = (await db.execute(stmt_user)).scalar_one_or_none()
+
+    # To prevent account enumeration, return success even if not found
+    generic_msg = "If your account is registered, you will receive an OTP shortly."
 
     if not user:
-        return {"message": "If this email is registered, you will receive an OTP shortly."}
+        return {"message": generic_msg}
 
     otp = "".join(random.choices(string.digits, k=6))
     user.password_reset_otp = otp
@@ -150,9 +188,20 @@ async def forgot_password(
 
     await db.commit()
 
-    await email_service.send_password_reset_otp(user, otp)
-
-    return {"message": "OTP sent to your email."}
+    # Determine delivery channel
+    if data.phone_number and volunteer and volunteer.telegram_chat_id:
+        # Send via Telegram
+        await telegram_service.send_password_reset_otp(volunteer.telegram_chat_id, otp)
+        return {"message": "OTP sent to your Telegram Sahyog bot."}
+    elif user.email:
+        # Send via Email
+        await email_service.send_password_reset_otp(user, otp)
+        return {"message": "OTP sent to your email."}
+    else:
+        # Fallback if phone was entered but not active on telegram
+        # and no email is available. 
+        # In this case we can't do much, return generic success but maybe log it.
+        return {"message": generic_msg}
 
 
 # =========================
@@ -163,18 +212,29 @@ async def reset_password(
     data: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(User).where(User.email == data.email)
-    user = (await db.execute(stmt)).scalar_one_or_none()
+    if not data.email and not data.phone_number:
+        raise HTTPException(status_code=400, detail="Email or Phone Number is required")
+
+    user = None
+    if data.email:
+        stmt = select(User).where(User.email == data.email)
+        user = (await db.execute(stmt)).scalar_one_or_none()
+    elif data.phone_number:
+        stmt_vol = select(Volunteer).where(Volunteer.phone_number.like(f"%{data.phone_number}"))
+        volunteer = (await db.execute(stmt_vol)).scalar_one_or_none()
+        if volunteer and volunteer.user_id:
+            stmt_user = select(User).where(User.id == volunteer.user_id)
+            user = (await db.execute(stmt_user)).scalar_one_or_none()
 
     if not user or user.password_reset_otp != data.otp:
-        raise HTTPException(status_code=400, detail="Invalid OTP or Email")
+        raise HTTPException(status_code=400, detail="Invalid OTP or Identifer")
 
-    if user.otp_expires_at < datetime.utcnow():
+    if user.otp_expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="OTP has expired")
 
     user.hashed_password = get_password_hash(data.new_password)
     user.password_reset_otp = None
-    user.otp_expires_at = datetime.utcnow() + timedelta(minutes=10)
+    user.otp_expires_at = datetime.now(timezone.utc)
 
     await db.commit()
 

@@ -11,6 +11,8 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, Dict
 from datetime import datetime, timezone, timedelta
 from jose import jwt, JWTError
+import re
+from pydantic import field_validator
 
 router = APIRouter()
 
@@ -36,6 +38,21 @@ class VolunteerRegistrationRequest(BaseModel):
     phone_number: str = Field(..., example="+919999999999")
     org_id: Optional[int] = Field(None, description="The ID of the organization to join (optional)")
     skills: Optional[Dict] = Field(None, example={"medical": True, "driving": False})
+
+    @field_validator('password')
+    @classmethod
+    def password_complexity(cls, v):
+        if not re.search(r"[A-Za-z]", v) or not re.search(r"\d", v):
+            raise ValueError('Password must contain at least one letter and one number')
+        return v
+
+    @field_validator('phone_number')
+    @classmethod
+    def phone_validation(cls, v):
+        # Basic international phone validation: starts with optional +, followed by at least 10 digits/spaces/dashes
+        if not re.match(r"^\+?[\d\s-]{10,}$", v):
+            raise ValueError('Invalid phone number format. Use at least 10 digits.')
+        return v
 
 class VolunteerRegistrationResponse(BaseModel):
     id: int

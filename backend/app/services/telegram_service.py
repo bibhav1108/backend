@@ -238,4 +238,16 @@ class TelegramService:
         logger.error(f"[Telegram] Commands sync failed: {response.text}")
         return False
 
+    async def send_password_reset_otp(self, chat_id: str, otp: str) -> bool:
+        """
+        Send a security code for account recovery.
+        """
+        msg = (
+            "🔐 *Security Alert: Password Reset Requested*\n\n"
+            f"Your recovery code is: `{otp}`\n\n"
+            "If you didn't request this, please ignore this message. Do not share this code with anyone."
+        )
+        msg_id = await self.send_message(chat_id, msg)
+        return msg_id is not None
+
 telegram_service = TelegramService()

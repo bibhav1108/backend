@@ -24,7 +24,8 @@ from backend.app.models import (
     MarketplaceInventory,
     InboundMessage,
     User,
-    UserRole
+    UserRole,
+    VolunteerStatus
 )
 from backend.app.volunteers.service import onboard_volunteer_via_telegram
 from backend.app.services.otp import generate_otp_pair, verify_otp
@@ -312,11 +313,20 @@ async def telegram_webhook(
                     # Ensure Need status is DISPATCHED
                     dispatch.marketplace_need.status = NeedStatus.DISPATCHED
                     
+                    # 🔴 STATUS SYNC: Set volunteer to ON_MISSION
+                    volunteer.status = VolunteerStatus.ON_MISSION
+                    
                     await db.commit()
                     
                     print(f"[TRACE] FCFS Success: {chat_id} claimed mission {dispatch_id}")
+                    # Navigation Link
+                    nav_link = ""
+                    if dispatch.marketplace_need.latitude and dispatch.marketplace_need.longitude:
+                        lat, lng = dispatch.marketplace_need.latitude, dispatch.marketplace_need.longitude
+                        nav_link = f"\n\n📍 *Navigation*: [Open Google Maps](https://www.google.com/maps/search/?api=1&query={lat},{lng})"
+
                     await send_and_log(bg=background_tasks, chat_id=chat_id,
-                        text=f"🎫 *Mission Accepted!*\n\nYour Pickup CODE is: `{raw_code}`\n\nShow this code to the donor upon collection. Thank you for your service! 🤝"
+                        text=f"🎫 *Mission Accepted!*\n\nYour Pickup CODE is: `{raw_code}`{nav_link}\n\nShow this code to the donor upon collection. Thank you for your service! 🤝"
                     )
 
                     # --- Notification Center: Mission Accepted ---
@@ -357,6 +367,10 @@ async def telegram_webhook(
                 dispatch = (await db.execute(stmt)).scalar_one_or_none()
                 if dispatch and dispatch.status == DispatchStatus.SENT:
                     dispatch.status = DispatchStatus.FAILED # Or add REJECTED status
+                    
+                    # 🟢 STATUS SYNC: Revert volunteer to AVAILABLE
+                    volunteer.status = VolunteerStatus.AVAILABLE
+                    
                     await db.commit()
                     await send_and_log(bg=background_tasks, chat_id=chat_id, text="🙏 *No problem!* We've updated the mission status. Thank you for letting us know! ✨")
 
@@ -404,13 +418,17 @@ async def telegram_webhook(
                     alert.is_processed = False
                     await db.commit()
                     
+                    # Link to the NEW Public Map Picker
+                    loc_picker_url = f"https://sahyog-setu-frontend.vercel.app/alert-location/{alert_id}"
+                    
                     loc_request_kb = {
-                        "keyboard": [[{"text": "📍 Share My Location", "request_location": True}]],
-                        "resize_keyboard": True,
-                        "one_time_keyboard": True
+                        "inline_keyboard": [
+                            [{"text": "🗺️ Pick Precise Spot on Map", "url": loc_picker_url}],
+                            [{"text": "📍 Quick Share (Current Location)", "callback_data": f"prompt_native_loc_{alert_id}"}]
+                        ]
                     }
                     await send_and_log(bg=background_tasks, chat_id=chat_id, 
-                        text="✅ *Report Verified!* Your donation is now live.\n\n🌟 *Final Step*: To help our volunteers reach you accurately, please click below to share your pickup location! 👇",
+                        text="✅ *Report Verified!* Your donation is now live.\n\n🌟 *Final Step*: To help our volunteers reach you accurately, please pin your exact pickup spot on the map! 👇",
                         reply_markup=loc_request_kb
                     )
                     
@@ -432,6 +450,18 @@ async def telegram_webhook(
                     alert.message_body = "[Pending Report]"
                     await db.commit()
                     await send_and_log(bg=background_tasks, chat_id=chat_id, text="🔄 *No problem!* Just send me the corrected details (Item, Qty, Location) and I'll re-analyze them.")
+
+            if data_payload.startswith("prompt_native_loc_"):
+                # Trigger the ReplyKeyboardMarkup for location
+                loc_kb = {
+                    "keyboard": [[{"text": "📍 Share My Location", "request_location": True}]],
+                    "resize_keyboard": True,
+                    "one_time_keyboard": True
+                }
+                await send_and_log(bg=background_tasks, chat_id=chat_id, 
+                    text="📍 *Ready!* Please click the button below to share your current location data with us.",
+                    reply_markup=loc_kb
+                )
 
             # --- Donor Prompt Handler ---
             if data_payload.startswith("prompt_otp_"):
@@ -497,13 +527,21 @@ async def telegram_webhook(
             creds = await onboard_volunteer_via_telegram(db, norm_phone, chat_id)
             
             if creds:
-                welcome_msg = (
-                    f"🎉 *Verification Successful!*\n\n"
-                    f"Welcome to the team, *{creds['name']}*! Your account has been activated.\n\n"
-                    f"👤 *Username*: `{creds['username']}`\n"
-                    f"🔐 *Password*: `{creds['password']}`\n\n"
-                    f"Keep these credentials safe. You will need them to log in to the SahyogSync volunteer portal. 🚀"
-                )
+                if creds.get("already_active"):
+                    welcome_msg = (
+                        f"✅ *Account Already Linked!*\n\n"
+                        f"Welcome back, *{creds['name']}*! Your Telegram is already linked to your SahyogSync account.\n\n"
+                        f"👤 *Username*: `{creds['username']}`\n\n"
+                        f"You can now use `/menu` to explore active missions. If you've forgotten your password, please use the 'Forgot Password' link on our website. 🚀"
+                    )
+                else:
+                    welcome_msg = (
+                        f"🎉 *Verification Successful!*\n\n"
+                        f"Welcome to the team, *{creds['name']}*! A new volunteer account has been created for you.\n\n"
+                        f"👤 *Username*: `{creds['username']}`\n"
+                        f"🔐 *Password*: `{creds['password']}`\n\n"
+                        f"Please log in to the SahyogSync portal to complete your profile and start helping! 🚀"
+                    )
                 await send_and_log(bg=background_tasks, chat_id=chat_id, text=welcome_msg)
                 return {"status": "verified"}
             else:
@@ -631,8 +669,12 @@ async def telegram_webhook(
             else:
                 missions_text = "👤 *Your Active Missions*:\n\n"
                 for i, d in enumerate(active, 1):
-                    # For listing, we'd need more details (pre-fetch via selectinload if needed)
-                    missions_text += f"{i}. Protocol READY for pickup at *{d.marketplace_need.pickup_address}*.\n"
+                    nav_link = ""
+                    if d.marketplace_need.latitude and d.marketplace_need.longitude:
+                        lat, lng = d.marketplace_need.latitude, d.marketplace_need.longitude
+                        nav_link = f" ([View Map](https://www.google.com/maps/search/?api=1&query={lat},{lng}))"
+                    
+                    missions_text += f"{i}. Protocol READY for pickup at *{d.marketplace_need.pickup_address}*{nav_link}.\n"
                 missions_text += "\nShow your 6-digit code to the donor upon arrival!"
                 await send_and_log(bg=background_tasks, chat_id=chat_id, text=missions_text)
             return {"status": "missions_sent"}
@@ -701,6 +743,9 @@ async def telegram_webhook(
                 need = (await db.execute(stmt_n)).scalar_one()
                 need.status = NeedStatus.OPEN
                 
+                # 🟢 STATUS SYNC: Revert volunteer to AVAILABLE
+                volunteer.status = VolunteerStatus.AVAILABLE
+                
                 await db.commit()
                 await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Mission Cancelled.* The request has been returned to the open pool. We hope you can join us again soon! 🤝")
             return {"status": "mission_cancelled"}
@@ -766,6 +811,11 @@ async def telegram_webhook(
                         stmt_stats = select(VolunteerStats).where(VolunteerStats.volunteer_id == dispatch.volunteer_id)
                         stats = (await db.execute(stmt_stats)).scalar_one_or_none()
                         if stats: stats.completions += 1
+                        
+                        # 🟢 STATUS SYNC: Revert volunteer to AVAILABLE
+                        stmt_v_reset = select(Volunteer).where(Volunteer.id == dispatch.volunteer_id)
+                        v_reset = (await db.execute(stmt_v_reset)).scalar_one()
+                        v_reset.status = VolunteerStatus.AVAILABLE
                         
                         await db.commit()
                         print(f"[TRACE] Mission {dispatch.id} COMPLETED via Donor OTP.")

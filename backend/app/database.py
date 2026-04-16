@@ -69,8 +69,10 @@ async def run_migrations():
             'urgency': ['LOW', 'MEDIUM', 'HIGH'],
             'notificationtype': ['DONOR_ALERT', 'MISSION_ACCEPTED', 'MISSION_COMPLETED', 'MISSION_CANCELLED', 'CAMPAIGN_INTEREST', 'SYSTEM'],
             'userrole': ['SYSTEM_ADMIN', 'NGO_COORDINATOR', 'VOLUNTEER'],
-            'joinrequeststatus': ['PENDING', 'APPROVED', 'REJECTED']
+            'joinrequeststatus': ['PENDING', 'APPROVED', 'REJECTED'],
+            'volunteerstatus': ['AVAILABLE', 'BUSY', 'ON_MISSION', 'INACTIVE']
         }
+    
         
         for type_name, vals in types_map.items():
             if type_name not in existing_types:
@@ -231,9 +233,11 @@ async def run_migrations():
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS trust_tier trusttier DEFAULT 'UNVERIFIED';"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS trust_score INTEGER DEFAULT 0;"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS id_verified BOOLEAN DEFAULT FALSE;"))
+        await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS aadhaar_last_4 VARCHAR;"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id);"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS skills JSON;"))
         await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS location geometry(POINT, 4326);"))
+        await conn.execute(text("ALTER TABLE volunteers ADD COLUMN IF NOT EXISTS status volunteerstatus DEFAULT 'AVAILABLE';"))
         await conn.execute(text("ALTER TABLE volunteers ALTER COLUMN org_id DROP NOT NULL;"))
 
         # User Extension: Support Volunteers, Roles, and Email Verification
