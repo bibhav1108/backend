@@ -121,7 +121,8 @@ app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(organizations_router, prefix="/api/organizations", tags=["organizations"])
 app.include_router(users_router, prefix="/api/users", tags=["users"])
 app.include_router(meta_router, prefix="/api", tags=["metadata"])
-app.include_router(webhooks_router, prefix="/api/webhooks", tags=["webhooks"])
+app.include_router(webhooks_router, prefix="/api/v1/webhooks", tags=["webhooks"])
+app.include_router(webhooks_router, prefix="/api/webhooks", tags=["webhooks-legacy"]) # Compatibility
 app.include_router(volunteers_router, prefix="/api/volunteers", tags=["volunteers"])
 app.include_router(marketplace_router, prefix="/api/marketplace/needs", tags=["marketplace"])
 app.include_router(marketplace_router, prefix="/api/needs", tags=["marketplace-legacy"]) # Compatibility
