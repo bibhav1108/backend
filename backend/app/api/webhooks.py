@@ -633,7 +633,16 @@ async def telegram_webhook(
             )
             await send_and_log(bg=background_tasks, chat_id=chat_id, text=tutorial_msg)
             return {"status": "tutorial_sent"}
-
+        if text == "/about":
+            about_msg = (
+                "🌍 *About SahyogSync*\n\n"
+                "SahyogSync (formerly Sahyog Setu) is an AI-powered coordination platform "
+                "designed to bridge the gap between surplus resources and those in need.\n\n"
+                "🚀 *Our Mission*: To automate disaster relief and daily recovery operations "
+                "using state-of-the-art AI, ensuring that no resource goes to waste and every "
+                "hero can contribute effectively.\n\n"
+                "🏗️ *Built with ❤️ for a better tomorrow.*"
+            )
             await send_and_log(bg=background_tasks, chat_id=chat_id, text=about_msg)
             return {"status": "about_sent"}
 
