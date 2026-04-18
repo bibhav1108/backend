@@ -10,6 +10,7 @@ from backend.app.api.deps import get_current_user
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime
+from backend.app.services import cloudinary_service
 
 router = APIRouter()
 
@@ -124,25 +125,15 @@ async def upload_profile_image(
     if file.content_type not in ["image/jpeg", "image/png", "image/webp"]:
         raise HTTPException(status_code=400, detail="Only JPEG, PNG and WEBP images are supported")
 
-    # 2. Prepare Directory
-    static_dir = os.path.join("backend", "app", "static", "profiles")
-    if not os.path.exists(static_dir):
-        os.makedirs(static_dir, exist_ok=True)
-
-    # 3. Generate Unique Filename
-    file_ext = file.filename.split(".")[-1]
-    unique_filename = f"user_{current_user.id}_{uuid.uuid4().hex[:8]}.{file_ext}"
-    file_path = os.path.join(static_dir, unique_filename)
-
-    # 4. Save File
+    # 2. Upload to Cloudinary
     try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        new_url = cloudinary_service.upload_image(file.file, folder="profiles")
+        if not new_url:
+            raise HTTPException(status_code=500, detail="Cloudinary upload failed")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to save image: {str(e)}")
 
-    # 5. Update User Record
-    new_url = f"/static/profiles/{unique_filename}"
+    # 3. Update User Record
     current_user.profile_image_url = new_url
     await db.commit()
 
@@ -160,18 +151,20 @@ async def remove_profile_image(
     if not current_user.profile_image_url:
         return {"message": "No profile image to remove"}
 
-    # 1. Physical Cleanup (Only if it's a managed upload)
-    if "/static/profiles/" in current_user.profile_image_url:
-        # Resolve path: project_root / backend / app / static / profiles / filename
+    # 1. Cloudinary Cleanup
+    if current_user.profile_image_url and "cloudinary" in current_user.profile_image_url:
+        cloudinary_service.delete_image(current_user.profile_image_url)
+    
+    # 2. Local Cleanup Fallback (Legacy)
+    elif current_user.profile_image_url and "/static/profiles/" in current_user.profile_image_url:
         filename = current_user.profile_image_url.split("/")[-1]
         static_dir = os.path.join("backend", "app", "static", "profiles")
         file_path = os.path.join(static_dir, filename)
-        
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
         except Exception as e:
-            print(f"[WARNING] Failed to delete file {file_path}: {e}")
+            print(f"[WARNING] Local cleanup failed: {e}")
 
     # 2. Reset DB Record
     current_user.profile_image_url = None

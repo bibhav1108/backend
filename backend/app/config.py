@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: Union[List[str], str] = ["https://sahyog-setu-frontend.vercel.app", "http://localhost:3000", "http://localhost:5173", "http://localhost:5174"]
     FRONTEND_URL: str = "https://sahyog-setu-frontend.vercel.app"
     BACKEND_URL: str = "http://localhost:8005" # Match run.py port
+    
+    # Cloudinary Settings
+    CLOUDINARY_CLOUD_NAME: Optional[str] = None
+    CLOUDINARY_API_KEY: Optional[str] = None
+    CLOUDINARY_API_SECRET: Optional[str] = None
 
     # SMTP Settings (Email/OTP)
     SMTP_HOST: Optional[str] = "smtp.gmail.com"

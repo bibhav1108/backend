@@ -17,3 +17,4 @@ langchain
 python-dotenv
 aiosmtplib==3.0.1
 resend
+cloudinary==1.41.0
