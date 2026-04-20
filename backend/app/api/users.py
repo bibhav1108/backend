@@ -11,6 +11,7 @@ from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime
 from backend.app.services import cloudinary_service
+from backend.app.services.auth_utils import get_password_hash, verify_password
 
 router = APIRouter()
 
@@ -21,6 +22,7 @@ class UserRead(BaseModel):
     org_id: Optional[int]
     email: EmailStr
     full_name: Optional[str]
+    role: str
     is_active: bool
     created_at: datetime
     trust_tier: Optional[str] = None
@@ -34,6 +36,14 @@ class UserStats(BaseModel):
     total_campaigns: int
     total_inventory: int
     total_volunteers: int
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str
 
 # --- Endpoints ---
 
@@ -56,6 +66,7 @@ async def get_my_profile(
         "org_id": current_user.org_id,
         "email": current_user.email,
         "full_name": current_user.full_name,
+        "role": current_user.role,
         "is_active": current_user.is_active,
         "created_at": current_user.created_at,
         "profile_image_url": current_user.profile_image_url,
@@ -171,3 +182,42 @@ async def remove_profile_image(
     await db.commit()
 
     return {"message": "Profile image removed and reverted to default"}
+
+@router.patch("/me", response_model=UserRead)
+async def update_my_profile(
+    data: UserUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update profile details (e.g., full_name, email) for the authenticated user."""
+    if data.full_name is not None:
+        current_user.full_name = data.full_name
+    
+    if data.email is not None:
+        # Simple check for email duplication could be added here if needed, 
+        # but the DB unique constraint will catch it anyway.
+        current_user.email = data.email
+    
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+@router.post("/me/change-password")
+async def change_my_password(
+    data: PasswordChange,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Securely change the authenticated user's password using old password verification."""
+    # 1. Verify old password
+    if not verify_password(data.old_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect current password"
+        )
+    
+    # 2. Update to new password
+    current_user.hashed_password = get_password_hash(data.new_password)
+    await db.commit()
+    
+    return {"status": "success", "message": "Password updated successfully"}

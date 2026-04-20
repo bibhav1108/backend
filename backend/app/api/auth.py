@@ -67,7 +67,7 @@ async def login(
     role_value = user.role.value if isinstance(user.role, UserRole) else user.role
 
     # 5. Check Org Approval Status
-    if role_value != UserRole.SYSTEM_ADMIN and org and org.status == "pending":
+    if role_value not in [UserRole.SYSTEM_ADMIN, UserRole.NGO_ADMIN] and org and org.status == "pending":
          raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your organization is awaiting admin approval. Please check back later."

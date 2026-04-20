@@ -28,6 +28,7 @@ from backend.app.api.users import router as users_router
 from backend.app.api.meta import router as meta_router
 from backend.app.api.campaigns import router as campaigns_router
 from backend.app.api.marketplace_inventory import router as m_inventory_router
+from backend.app.api.ngo_admin import router as ngo_admin_router
 from backend.app.api.admin import router as admin_router
 from backend.app.notifications.router import router as notifications_router
 from backend.app.api.audit import router as audit_router
@@ -131,6 +132,7 @@ app.include_router(inventory_router, prefix="/api/inventory", tags=["inventory"]
 app.include_router(campaigns_router, prefix="/api/campaigns", tags=["campaigns"])
 app.include_router(m_inventory_router, prefix="/api/marketplace/inventory", tags=["marketplace"])
 app.include_router(notifications_router, prefix="/api/notifications", tags=["notifications"])
+app.include_router(ngo_admin_router, prefix="/api/ngo-admin", tags=["ngo-admin"])
 app.include_router(admin_router, prefix="/api/admin", tags=["admin"])
 app.include_router(audit_router, prefix="/api/audit", tags=["audit"])
 app.include_router(feedback_router, prefix="/api/feedback", tags=["feedback"])

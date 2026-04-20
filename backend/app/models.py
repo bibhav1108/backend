@@ -72,6 +72,7 @@ class VolunteerStatus(str, enum.Enum):
 
 class UserRole(str, enum.Enum):
     SYSTEM_ADMIN = "SYSTEM_ADMIN"
+    NGO_ADMIN = "NGO_ADMIN" # New role for organization owners
     NGO_COORDINATOR = "NGO_COORDINATOR"
     VOLUNTEER = "VOLUNTEER"
 
