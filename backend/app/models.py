@@ -385,7 +385,7 @@ class PlatformFeedback(Base):
     __tablename__ = "platform_feedback"
     
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     
     type: Mapped[FeedbackType] = mapped_column(SQLEnum(FeedbackType))
     rating: Mapped[Optional[float]] = mapped_column(nullable=True)

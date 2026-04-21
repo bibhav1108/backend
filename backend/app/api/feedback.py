@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.app.database import get_db
 from backend.app.models import PlatformFeedback, FeedbackType, User, UserRole
-from backend.app.api.deps import get_current_user
+from backend.app.api.deps import get_current_user, get_current_user_optional
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
@@ -20,7 +20,7 @@ class FeedbackCreate(BaseModel):
 
 class FeedbackRead(BaseModel):
     id: int
-    user_id: int
+    user_id: Optional[int] = None
     user_name: str
     user_role: str
     type: FeedbackType
@@ -48,13 +48,13 @@ async def require_admin(current_user: User = Depends(get_current_user)):
 async def submit_feedback(
     feedback_in: FeedbackCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """
-    Authenticated users (NGOs, Volunteers) submit platform reviews or issue requests.
+    Authenticated or Anonymous users submit platform reviews or issue requests.
     """
     new_feedback = PlatformFeedback(
-        user_id=current_user.id,
+        user_id=current_user.id if current_user else None,
         type=feedback_in.type,
         rating=feedback_in.rating,
         category=feedback_in.category,
@@ -77,7 +77,7 @@ async def list_feedback(
     """
     stmt = (
         select(PlatformFeedback, User.full_name, User.role)
-        .join(User, PlatformFeedback.user_id == User.id)
+        .outerjoin(User, PlatformFeedback.user_id == User.id)
     )
 
     if type_filter:

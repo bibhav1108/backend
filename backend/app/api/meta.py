@@ -1,6 +1,11 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Any
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
+from backend.app.database import get_db
+from backend.app.models import Organization, Volunteer, NGO_Campaign as Campaign, CampaignStatus
 
 router = APIRouter()
 
@@ -11,6 +16,13 @@ class PatchNote(BaseModel):
     features: List[str]
     status: str
     note: Optional[str] = None
+
+class PublicStats(BaseModel):
+    total_partners: int
+    total_volunteers: int
+    total_projects: int
+    total_items: int
+    recent_activity: List[dict]
 
 # Hardcoded patch data for now
 PATCHES = [
@@ -73,3 +85,72 @@ async def get_current_version():
     Get the current active application version.
     """
     return {"version": "2.0.0", "codename": "SahyogSync Duality"}
+
+import re
+
+@router.get("/public/stats", response_model=PublicStats)
+async def get_public_stats(db: AsyncSession = Depends(get_db)):
+    """
+    Publicly accessible global impact metrics.
+    Jargon-free: NGOs -> Partners, Missions -> Projects.
+    Adopted 'Inclusive Counting': Counts all registrations to reflect scale.
+    """
+    # 1. Total Partners (All Registered NGOs)
+    org_stmt = select(func.count()).select_from(Organization)
+    total_partners = (await db.execute(org_stmt)).scalar() or 0
+
+    # 2. Total Volunteer Force (All Registrations)
+    vol_stmt = select(func.count()).select_from(Volunteer)
+    total_volunteers = (await db.execute(vol_stmt)).scalar() or 0
+
+    # 3. Community Projects (All Statuses)
+    camp_stmt = (
+        select(Campaign)
+        .options(selectinload(Campaign.organization))
+    )
+    all_projects = (await db.execute(camp_stmt)).scalars().all()
+    
+    total_projects = len(all_projects)
+    total_items = 0
+    
+    recent_activity = []
+    
+    # Process project items and activity
+    # Sort by created_at desc
+    sorted_projects = sorted(all_projects, key=lambda x: x.created_at, reverse=True)
+    
+    # Helper to extract numbers from strings like "100kg" or "50 kits"
+    def extract_qty(val: Any) -> float:
+        if isinstance(val, (int, float)):
+            return float(val)
+        if isinstance(val, str):
+            # Find first number (integer or decimal) in string
+            match = re.search(r"(\d+(\.\d+)?)", val)
+            if match:
+                return float(match.group(1))
+        return 1.0 # Fallback
+
+    for project in sorted_projects:
+        # Sum up items
+        if project.items:
+            for qty_val in project.items.values():
+                total_items += extract_qty(qty_val)
+        
+        # Add to activity feed (limit 5)
+        if len(recent_activity) < 5:
+            recent_activity.append({
+                "id": project.id,
+                "title": project.name,
+                "org_name": project.organization.name if project.organization else "SahyogSync Partner",
+                "status": "In Progress" if project.status == CampaignStatus.ACTIVE else ("Done" if project.status == CampaignStatus.COMPLETED else "Upcoming"),
+                "completed_at": project.created_at.isoformat(),
+                "impact": f"{len(project.items) if project.items else 0} resource types shared"
+            })
+
+    return {
+        "total_partners": total_partners,
+        "total_volunteers": total_volunteers,
+        "total_projects": total_projects,
+        "total_items": int(total_items),
+        "recent_activity": recent_activity
+    }
