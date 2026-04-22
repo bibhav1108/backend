@@ -10,6 +10,9 @@ from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 import re
 from pydantic import field_validator
+from backend.app.models import NGOType, NGOVerificationStatus, AdminIDProofType, NGODocument
+from backend.app.services.cloudinary_service import upload_image
+from fastapi import UploadFile, File, Form
 
 router = APIRouter()
 
@@ -29,11 +32,22 @@ class NGOAdminRegistrationRequest(BaseModel):
         return v
 
 class NGOOnboardingRequest(BaseModel):
+    # NGO Details
     org_name: str = Field(..., example="Helping Hands NGO")
     org_phone: str = Field(..., example="+918888888888")
     org_email: EmailStr = Field(..., example="contact@helpinghands.org")
+    ngo_type: Optional[NGOType] = Field(None, example=NGOType.TRUST)
+    registration_number: Optional[str] = Field(None, example="REG/123/456")
+    pan_number: Optional[str] = Field(None, example="ABCDE1234F")
+    ngo_darpan_id: Optional[str] = Field(None, example="KA/2023/0123456")
+    office_address: Optional[str] = Field(None, example="123, Main Road, Bangalore")
     about: Optional[str] = None
     website_url: Optional[str] = None
+
+    # Admin Identity Details
+    admin_phone: Optional[str] = Field(None, example="+919999999999")
+    id_proof_type: Optional[AdminIDProofType] = Field(None, example=AdminIDProofType.AADHAAR)
+    id_proof_number: Optional[str] = Field(None, example="1234-5678-9012")
 
 class CoordinatorCreateRequest(BaseModel):
     full_name: str = Field(..., example="Rajesh Kumar")
@@ -102,36 +116,50 @@ async def onboard_ngo(
     Step 2: NGO Admin creates their organization profile.
     """
     if current_user.org_id:
-        raise HTTPException(status_code=400, detail="User is already associated with an organization.")
-
-    # Check Org Uniqueness
-    org_stmt = select(Organization).where(
-        (Organization.contact_email == data.org_email) | 
-        (Organization.contact_phone == data.org_phone)
-    )
-    if (await db.execute(org_stmt)).scalar_one_or_none():
-         raise HTTPException(status_code=400, detail="Organization with this email or phone already exists.")
+        # Check if we are updating an existing DRAFT
+        org_stmt = select(Organization).where(Organization.id == current_user.org_id)
+        existing_org = (await db.execute(org_stmt)).scalar_one_or_none()
+        if not existing_org or existing_org.status != NGOVerificationStatus.DRAFT:
+            raise HTTPException(status_code=400, detail="User is already associated with a verified organization.")
+        new_org = existing_org
+    else:
+        # Check Org Uniqueness (Only for new orgs)
+        org_stmt = select(Organization).where(
+            (Organization.contact_email == data.org_email) | 
+            (Organization.contact_phone == data.org_phone)
+        )
+        if (await db.execute(org_stmt)).scalar_one_or_none():
+             raise HTTPException(status_code=400, detail="Organization with this email or phone already exists.")
+        
+        new_org = Organization(status=NGOVerificationStatus.DRAFT)
+        db.add(new_org)
 
     try:
-        new_org = Organization(
-            name=data.org_name,
-            contact_phone=data.org_phone,
-            contact_email=data.org_email,
-            about=data.about,
-            website_url=data.website_url,
-            status="pending"
-        )
-        db.add(new_org)
+        if data.org_name: new_org.name = data.org_name
+        if data.org_phone: new_org.contact_phone = data.org_phone
+        if data.org_email: new_org.contact_email = data.org_email
+        if data.ngo_type: new_org.ngo_type = data.ngo_type
+        if data.registration_number: new_org.registration_number = data.registration_number
+        if data.pan_number: new_org.pan_number = data.pan_number
+        if data.ngo_darpan_id: new_org.ngo_darpan_id = data.ngo_darpan_id
+        if data.office_address: new_org.office_address = data.office_address
+        if data.about: new_org.about = data.about
+        if data.website_url: new_org.website_url = data.website_url
+        
         await db.flush()
 
         current_user.org_id = new_org.id
+        if data.admin_phone: current_user.phone_number = data.admin_phone
+        if data.id_proof_type: current_user.id_proof_type = data.id_proof_type
+        if data.id_proof_number: current_user.id_proof_number_encrypted = data.id_proof_number 
+        
         await db.commit()
         
         return {
             "org_id": new_org.id,
             "name": new_org.name,
             "status": new_org.status,
-            "message": "Organization created successfully. Awaiting system admin approval."
+            "message": "Organization profile created. Please upload mandatory documents to proceed."
         }
     except Exception as e:
         await db.rollback()
@@ -152,7 +180,7 @@ async def create_coordinator(
     # Check Org Status
     org_stmt = select(Organization).where(Organization.id == current_user.org_id)
     org = (await db.execute(org_stmt)).scalar_one_or_none()
-    if not org or org.status != "active":
+    if not org or org.status != NGOVerificationStatus.APPROVED:
         raise HTTPException(status_code=403, detail="Wait for organization approval before adding staff.")
 
     # Check User Uniqueness
@@ -182,3 +210,71 @@ async def create_coordinator(
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/documents/upload", status_code=status.HTTP_201_CREATED)
+async def upload_ngo_document(
+    document_type: str = Form(...),
+    is_mandatory: bool = Form(True),
+    file: UploadFile = File(...),
+    current_user: User = Depends(require_ngo_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Step 3: NGO Admin uploads legal proofs.
+    """
+    if not current_user.org_id:
+        raise HTTPException(status_code=400, detail="NGO Profile not found.")
+
+    # Upload to Cloudinary
+    # We use 'raw' or 'image' resource type depending on file, but cloudinary_service handles it
+    url = upload_image(file.file, folder=f"org_{current_user.org_id}/docs")
+    if not url:
+        raise HTTPException(status_code=500, detail="File upload failed")
+
+    try:
+        new_doc = NGODocument(
+            org_id=current_user.org_id,
+            document_type=document_type,
+            document_url=url,
+            is_mandatory=is_mandatory
+        )
+        db.add(new_doc)
+        await db.commit()
+        
+        return {
+            "document_id": new_doc.id,
+            "document_type": new_doc.document_type,
+            "url": new_doc.document_url,
+            "message": "Document uploaded successfully."
+        }
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/submit-verification")
+async def submit_for_verification(
+    current_user: User = Depends(require_ngo_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Final Step: Submit NGO for admin verification.
+    """
+    if not current_user.org_id:
+        raise HTTPException(status_code=400, detail="NGO Profile not found.")
+
+    stmt = select(Organization).where(Organization.id == current_user.org_id)
+    org = (await db.execute(stmt)).scalar_one_or_none()
+
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+
+    # Validate that mandatory documents exist? (Optional but good)
+    # For now, let's just update the status
+    
+    org.status = NGOVerificationStatus.VERIFICATION_REQUESTED
+    await db.commit()
+    
+    return {
+        "status": org.status,
+        "message": "Verification request submitted. Approval usually takes up to 24 hours."
+    }

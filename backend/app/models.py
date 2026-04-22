@@ -88,6 +88,25 @@ class FeedbackType(str, enum.Enum):
     REVIEW = "REVIEW"
     ISSUE = "ISSUE"
 
+class NGOType(str, enum.Enum):
+    TRUST = "TRUST"
+    SOCIETY = "SOCIETY"
+    SECTION_8 = "SECTION_8"
+
+class NGOVerificationStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    VERIFICATION_REQUESTED = "VERIFICATION_REQUESTED"
+    UNDER_REVIEW = "UNDER_REVIEW"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    VERIFIED_LIVE = "VERIFIED_LIVE"
+
+class AdminIDProofType(str, enum.Enum):
+    AADHAAR = "AADHAAR"
+    PAN = "PAN"
+    VOTER_ID = "VOTER_ID"
+    PASSPORT = "PASSPORT"
+
 # --- Models ---
 
 class Organization(Base):
@@ -97,8 +116,15 @@ class Organization(Base):
     name: Mapped[str] = mapped_column(index=True)
     contact_phone: Mapped[str] = mapped_column(unique=True)
     contact_email: Mapped[str] = mapped_column(unique=True)
-    status: Mapped[str] = mapped_column(default="pending")  # pending/active
+    status: Mapped[NGOVerificationStatus] = mapped_column(SQLEnum(NGOVerificationStatus), default=NGOVerificationStatus.DRAFT)
     
+    # NGO Details
+    ngo_type: Mapped[Optional[NGOType]] = mapped_column(SQLEnum(NGOType), nullable=True)
+    registration_number: Mapped[Optional[str]] = mapped_column(unique=True, nullable=True)
+    pan_number: Mapped[Optional[str]] = mapped_column(unique=True, nullable=True)
+    ngo_darpan_id: Mapped[Optional[str]] = mapped_column(unique=True, nullable=True)
+    office_address: Mapped[Optional[str]] = mapped_column(nullable=True)
+
     about: Mapped[Optional[str]] = mapped_column(nullable=True)
     website_url: Mapped[Optional[str]] = mapped_column(nullable=True)
 
@@ -110,6 +136,7 @@ class Organization(Base):
     inventory: Mapped[List["Inventory"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     marketplace_inventory: Mapped[List["MarketplaceInventory"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
     campaigns: Mapped[List["NGO_Campaign"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
+    documents: Mapped[List["NGODocument"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
 
     # --- Newsletter Broadcast Limits ---
     last_broadcast_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
@@ -137,6 +164,11 @@ class User(Base):
     password_reset_otp: Mapped[Optional[str]] = mapped_column(nullable=True)
     otp_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     
+    # Admin Specific Details
+    phone_number: Mapped[Optional[str]] = mapped_column(nullable=True)
+    id_proof_type: Mapped[Optional[AdminIDProofType]] = mapped_column(SQLEnum(AdminIDProofType), nullable=True)
+    id_proof_number_encrypted: Mapped[Optional[str]] = mapped_column(nullable=True) # Masked in UI
+
     profile_image_url: Mapped[str] = mapped_column(default="/static/default_pfp.jpg")
     
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
@@ -396,3 +428,15 @@ class PlatformFeedback(Base):
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
 
     user: Mapped["User"] = relationship()
+
+class NGODocument(Base):
+    __tablename__ = "ngo_documents"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    org_id: Mapped[int] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"))
+    document_type: Mapped[str] = mapped_column() # e.g. "REGISTRATION_CERTIFICATE", "PAN_CARD"
+    document_url: Mapped[str] = mapped_column()
+    is_mandatory: Mapped[bool] = mapped_column(default=True)
+    uploaded_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
+    organization: Mapped["Organization"] = relationship(back_populates="documents")

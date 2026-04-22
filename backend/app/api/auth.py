@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database import get_db
-from backend.app.models import TrustTier, UserRole
+from backend.app.models import TrustTier, UserRole, NGOVerificationStatus
 from backend.app.services.auth_utils import verify_password, create_access_token, get_password_hash
 from backend.app.services.email_service import email_service
 from pydantic import BaseModel
@@ -24,6 +24,7 @@ class Token(BaseModel):
     token_type: str
     org_id: Optional[int] = None
     org_name: Optional[str] = "Unknown"
+    org_status: Optional[str] = None
     role: str 
 
 class ForgotPasswordRequest(BaseModel):
@@ -67,10 +68,10 @@ async def login(
     role_value = user.role.value if isinstance(user.role, UserRole) else user.role
 
     # 5. Check Org Approval Status
-    if role_value not in [UserRole.SYSTEM_ADMIN, UserRole.NGO_ADMIN] and org and org.status == "pending":
+    if role_value not in [UserRole.SYSTEM_ADMIN, UserRole.NGO_ADMIN] and org and org.status != NGOVerificationStatus.APPROVED:
          raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your organization is awaiting admin approval. Please check back later."
+            detail="Your organization account is not currently active. Please contact your administrator."
         )
 
     # 6. Create JWT
@@ -79,6 +80,7 @@ async def login(
         data={
             "sub": sub_val,
             "org_id": user.org_id,
+            "org_status": org.status.value if org and hasattr(org.status, 'value') else (org.status if org else None),
             "role": role_value 
         }
     )
@@ -88,6 +90,7 @@ async def login(
         "token_type": "bearer",
         "org_id": user.org_id,
         "org_name": org.name if org else "Unknown",
+        "org_status": org.status if org else None,
         "role": role_value 
     }
 

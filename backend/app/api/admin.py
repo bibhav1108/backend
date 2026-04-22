@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from backend.app.database import get_db
-from backend.app.models import Organization, User, UserRole, Volunteer
+from backend.app.models import Organization, User, UserRole, Volunteer, NGOVerificationStatus
 from backend.app.api.deps import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime
 
@@ -16,8 +16,38 @@ class AdminOrgRead(BaseModel):
     name: str
     contact_phone: str
     contact_email: str
-    status: str
+    status: NGOVerificationStatus
     created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class AdminDocRead(BaseModel):
+    id: int
+    document_type: str
+    document_url: str
+    is_mandatory: bool
+    uploaded_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class AdminOrgDetail(AdminOrgRead):
+    ngo_type: Optional[str] = None
+    registration_number: Optional[str] = None
+    pan_number: Optional[str] = None
+    ngo_darpan_id: Optional[str] = None
+    office_address: Optional[str] = None
+    about: Optional[str] = None
+    website_url: Optional[str] = None
+    
+    # Admin User Info
+    admin_name: Optional[str] = None
+    admin_phone: Optional[str] = None
+    id_proof_type: Optional[str] = None
+    id_proof_number: Optional[str] = None # Masked/Encrypted
+    
+    documents: List[AdminDocRead] = []
 
     class Config:
         from_attributes = True
@@ -96,6 +126,59 @@ async def list_organizations(
     result = await db.execute(stmt)
     return result.scalars().all()
 
+@router.get("/organizations/{org_id}", response_model=AdminOrgDetail)
+async def get_organization_detail(
+    org_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin)
+):
+    """Get full details of an organization including documents and admin info."""
+    from sqlalchemy.orm import selectinload
+    stmt = select(Organization).where(Organization.id == org_id).options(
+        selectinload(Organization.documents),
+        selectinload(Organization.users)
+    )
+    result = await db.execute(stmt)
+    org = result.scalar_one_or_none()
+    
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    # Find the primary admin (the one who created it)
+    admin_user = next((u for u in org.users if u.role == UserRole.NGO_ADMIN), None)
+    
+    # Masking Sensitive ID Proof Number
+    raw_id = admin_user.id_proof_number_encrypted if admin_user else None
+    masked_id = None
+    if raw_id:
+        # Simple masking: keep last 4 digits
+        visible_len = 4
+        if len(raw_id) > visible_len:
+            masked_id = "X" * (len(raw_id) - visible_len) + raw_id[-visible_len:]
+        else:
+            masked_id = raw_id
+
+    return AdminOrgDetail(
+        id=org.id,
+        name=org.name,
+        contact_phone=org.contact_phone,
+        contact_email=org.contact_email,
+        status=org.status,
+        created_at=org.created_at,
+        ngo_type=org.ngo_type,
+        registration_number=org.registration_number,
+        pan_number=org.pan_number,
+        ngo_darpan_id=org.ngo_darpan_id,
+        office_address=org.office_address,
+        about=org.about,
+        website_url=org.website_url,
+        admin_name=admin_user.full_name if admin_user else None,
+        admin_phone=admin_user.phone_number if admin_user else None,
+        id_proof_type=admin_user.id_proof_type if admin_user else None,
+        id_proof_number=masked_id,
+        documents=org.documents
+    )
+
 @router.get("/volunteers", response_model=List[AdminVolunteerRead])
 async def list_volunteers(
     db: AsyncSession = Depends(get_db),
@@ -165,10 +248,10 @@ async def approve_organization(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
     
-    if org.status == "active":
+    if org.status == NGOVerificationStatus.APPROVED:
         return {"message": "Organization is already active"}
     
-    org.status = "active"
+    org.status = NGOVerificationStatus.APPROVED
     await db.commit()
     
     return {"message": f"Organization '{org.name}' has been approved and activated."}
@@ -188,9 +271,7 @@ async def reject_organization(
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
         
-    # Delete associated users too (Cascade in models should handle this, but let's be safe)
-    # Actually, let's just delete the org and rely on ondelete="CASCADE" or manual cleanup
-    await db.delete(org) # This will delete the org and cascade to its users if defined
+    org.status = NGOVerificationStatus.REJECTED
     await db.commit()
     
-    return {"message": "Organization registration has been rejected and removed."}
+    return {"message": "Organization registration has been rejected."}

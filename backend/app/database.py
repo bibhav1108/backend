@@ -71,7 +71,10 @@ async def run_migrations():
             'userrole': ['SYSTEM_ADMIN', 'NGO_COORDINATOR', 'VOLUNTEER'],
             'joinrequeststatus': ['PENDING', 'APPROVED', 'REJECTED'],
             'volunteerstatus': ['AVAILABLE', 'BUSY', 'ON_MISSION', 'INACTIVE'],
-            'feedbacktype': ['REVIEW', 'ISSUE']
+            'feedbacktype': ['REVIEW', 'ISSUE'],
+            'ngotype': ['TRUST', 'SOCIETY', 'SECTION_8'],
+            'ngoverificationstatus': ['DRAFT', 'VERIFICATION_REQUESTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'VERIFIED_LIVE'],
+            'adminidprooftype': ['AADHAAR', 'PAN', 'VOTER_ID', 'PASSPORT']
         }
     
         
@@ -151,6 +154,29 @@ async def run_migrations():
         # Organization Extensions
         await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS about TEXT;"))
         await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS website_url VARCHAR;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS ngo_type ngotype;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS registration_number VARCHAR;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS pan_number VARCHAR;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS ngo_darpan_id VARCHAR;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS office_address TEXT;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS last_broadcast_at TIMESTAMP;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS daily_broadcast_count INTEGER DEFAULT 0;"))
+        
+        # Update organizations status to use enum if it was varchar
+        # This might be tricky if data exists, but since we are moving to Enums:
+        await conn.execute(text("""
+            DO $$ 
+            BEGIN 
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='organizations' AND column_name='status' AND data_type='character varying') THEN
+                    -- Map legacy strings to new ENUM values
+                    UPDATE organizations SET status = 'APPROVED' WHERE status = 'active';
+                    UPDATE organizations SET status = 'DRAFT' WHERE status = 'pending';
+                    -- Cast to new type
+                    ALTER TABLE organizations ALTER COLUMN status TYPE ngoverificationstatus USING status::ngoverificationstatus;
+                    ALTER TABLE organizations ALTER COLUMN status SET DEFAULT 'DRAFT';
+                END IF;
+            END $$;
+        """))
 
         # Create New Tables
         await conn.execute(text("""
@@ -265,6 +291,9 @@ async def run_migrations():
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS unverified_email VARCHAR;"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_otp VARCHAR;"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP;"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR;"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS id_proof_type adminidprooftype;"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS id_proof_number_encrypted VARCHAR;"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url VARCHAR DEFAULT '/static/default_pfp.jpg';"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_verification_token ON users (verification_token);"))
 
@@ -277,6 +306,18 @@ async def run_migrations():
         await conn.execute(text("ALTER TABLE IF EXISTS ngo_campaigns ADD COLUMN IF NOT EXISTS volunteers_required INTEGER DEFAULT 0;"))
         await conn.execute(text("ALTER TABLE IF EXISTS ngo_campaigns ADD COLUMN IF NOT EXISTS required_skills JSON;"))
         await conn.execute(text("ALTER TABLE IF EXISTS ngo_campaigns ADD COLUMN IF NOT EXISTS location_address VARCHAR;"))
+
+        # Create NGO Documents Table
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS ngo_documents (
+                id SERIAL PRIMARY KEY,
+                org_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                document_type VARCHAR NOT NULL,
+                document_url VARCHAR NOT NULL,
+                is_mandatory BOOLEAN DEFAULT TRUE,
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """))
 
         # Final Cleanup: Remove references that cross-wire Marketplace and Campaign
         await conn.execute(text("ALTER TABLE marketplace_needs DROP COLUMN IF EXISTS campaign_id;"))
