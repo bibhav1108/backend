@@ -45,6 +45,9 @@ class PublicOrganizationRead(BaseModel):
     name: str
     about: Optional[str] = None
     website_url: Optional[str] = None
+    contact_email: Optional[str] = None
+    ngo_type: Optional[str] = None
+    office_address: Optional[str] = None
 
     class Config:
         from_attributes = True
