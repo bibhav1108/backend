@@ -30,12 +30,8 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: Optional[str] = None
     CLOUDINARY_API_SECRET: Optional[str] = None
 
-    # SMTP Settings (Email/OTP)
-    SMTP_HOST: Optional[str] = "smtp.gmail.com"
-    SMTP_PORT: Optional[int] = 587
-    SMTP_USER: Optional[str] = None
-    SMTP_PASSWORD: Optional[str] = None
-    RESEND_API_KEY: Optional[str] = None
+    # Email Settings (Brevo HTTP API)
+    BREVO_API_KEY: Optional[str] = None
     EMAILS_FROM_EMAIL: Optional[str] = None
     EMAILS_FROM_NAME: str = "SahyogSync"
 

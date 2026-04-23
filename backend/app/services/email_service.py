@@ -1,16 +1,19 @@
-import asyncio
+import httpx
+import traceback
 from backend.app.config import settings
 from backend.app.models import User
-import traceback
-import resend
+
+
+BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
+
 
 class EmailService:
     @property
     def is_configured(self) -> bool:
-        return bool(settings.RESEND_API_KEY)
+        return bool(settings.BREVO_API_KEY)
 
     async def send_email(self, recipient_email: str, subject: str, html_content: str):
-        """HTTP-based email sender via Resend API."""
+        """HTTP-based email sender via Brevo API."""
         if not self.is_configured:
             print("\n" + "="*50)
             print(f"📧 [MOCK EMAIL] To: {recipient_email}")
@@ -19,31 +22,33 @@ class EmailService:
             print("="*50 + "\n")
             return
 
+        from_email = settings.EMAILS_FROM_EMAIL or "sahyogsync.alerts@gmail.com"
+        from_name = settings.EMAILS_FROM_NAME or "SahyogSync"
+
+        payload = {
+            "sender": {"name": from_name, "email": from_email},
+            "to": [{"email": recipient_email}],
+            "subject": subject,
+            "htmlContent": html_content,
+        }
+
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "api-key": settings.BREVO_API_KEY,
+        }
+
         try:
-            resend.api_key = settings.RESEND_API_KEY
-            
-            # --- CRITICAL FIX: RESEND DOMAIN VERIFICATION ---
-            # Resend DOES NOT allow sending from gmail.com/etc unless you verify the domain.
-            # Free tier users MUST use 'onboarding@resend.dev'.
-            from_email = "onboarding@resend.dev" 
-            if settings.EMAILS_FROM_EMAIL and "@resend.dev" not in settings.EMAILS_FROM_EMAIL:
-                print(f"[NOTE] Using 'onboarding@resend.dev' instead of '{settings.EMAILS_FROM_EMAIL}' because only Resend-verified domains are allowed.")
-            
-            params = {
-                "from": f"{settings.EMAILS_FROM_NAME} <{from_email}>",
-                "to": [recipient_email],
-                "subject": subject,
-                "html": html_content,
-            }
-            
-            r = await asyncio.to_thread(resend.Emails.send, params)
-            
-            if hasattr(r, "id"):
-                print(f"[SUCCESS] Email sent via Resend (ID: {r.id}) to {recipient_email}")
+            async with httpx.AsyncClient() as client:
+                response = await client.post(BREVO_API_URL, json=payload, headers=headers)
+
+            if response.status_code == 201:
+                data = response.json()
+                print(f"[SUCCESS] Email sent via Brevo (MessageId: {data.get('messageId', 'N/A')}) to {recipient_email}")
             else:
-                print(f"[ERROR] Resend API returned an unexpected response: {r}")
+                print(f"[ERROR] Brevo API failed ({response.status_code}): {response.text}")
         except Exception as e:
-            print(f"[ERROR] Resend API failed: {e}")
+            print(f"[ERROR] Brevo API request failed: {e}")
             traceback.print_exc()
 
     async def send_verification_email(self, user: User, token: str):

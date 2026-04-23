@@ -504,7 +504,7 @@ Automatically populated when marketplace missions complete. See [§3.4](#34-mark
 
 | Channel | Flow |
 |---|---|
-| **Email** | User submits email → 6-digit OTP sent via Resend API → User enters OTP + new password |
+| **Email** | User submits email → 6-digit OTP sent via Brevo API → User enters OTP + new password |
 | **Telegram** | User submits phone → OTP sent to Telegram bot chat → User enters OTP + new password |
 | **Expiry** | OTP valid for 10 minutes |
 | **Anti-Enumeration** | Returns generic success message even if account doesn't exist |
@@ -537,7 +537,7 @@ Automatically populated when marketplace missions complete. See [§3.4](#34-mark
          │
 2. Enters email + username → POST /volunteers/send-otp
    - Checks email/username uniqueness
-   - Sends 6-digit OTP via email (Resend API)
+   - Sends 6-digit OTP via email (Brevo API)
          │
 3. User enters OTP → POST /volunteers/verify-otp
    - Returns a signed JWT (verified_token)
@@ -771,7 +771,7 @@ Complete accountability and traceability for all significant actions.
 
 | Method | Purpose |
 |---|---|
-| `send_email()` | Generic email sender via **Resend API** (HTTP-based, no SMTP) |
+| `send_email()` | Generic email sender via **Brevo API** (HTTP-based, no SMTP) |
 | `send_verification_email()` | Email verification link for new accounts |
 | `send_password_reset_otp()` | 6-digit OTP for password recovery |
 | `send_email_update_otp()` | OTP for email address change |
