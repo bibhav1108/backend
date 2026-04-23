@@ -117,6 +117,7 @@ class Organization(Base):
     contact_phone: Mapped[str] = mapped_column(unique=True)
     contact_email: Mapped[str] = mapped_column(unique=True)
     status: Mapped[NGOVerificationStatus] = mapped_column(SQLEnum(NGOVerificationStatus), default=NGOVerificationStatus.DRAFT)
+    logo_url: Mapped[Optional[str]] = mapped_column(nullable=True)
     
     # NGO Details
     ngo_type: Mapped[Optional[NGOType]] = mapped_column(SQLEnum(NGOType), nullable=True)

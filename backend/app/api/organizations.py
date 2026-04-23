@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from backend.app.database import get_db
 from backend.app.models import Organization, User, UserRole, NGOVerificationStatus, NGOType
 from backend.app.services.auth_utils import get_password_hash
 from backend.app.api.deps import get_current_user
+from backend.app.services import cloudinary_service
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import datetime
@@ -45,6 +46,7 @@ class PublicOrganizationRead(BaseModel):
     name: str
     about: Optional[str] = None
     website_url: Optional[str] = None
+    logo_url: Optional[str] = None
     contact_email: Optional[str] = None
     contact_phone: Optional[str] = None
     ngo_type: Optional[str] = None
@@ -70,6 +72,7 @@ class OrganizationRead(BaseModel):
     contact_phone: str
     contact_email: str
     status: NGOVerificationStatus
+    logo_url: Optional[str] = None
     ngo_type: Optional[NGOType] = None
     registration_number: Optional[str] = None
     pan_number: Optional[str] = None
@@ -206,3 +209,36 @@ async def update_my_organization(
     await db.commit()
     await db.refresh(org)
     return org
+
+@router.post("/me/logo")
+async def upload_organization_logo(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Securely upload and update the logo for the current user's organization."""
+    if not current_user.org_id:
+        raise HTTPException(status_code=400, detail="User is not associated with any organization")
+
+    # 1. Validate File Type
+    if file.content_type not in ["image/jpeg", "image/png", "image/webp"]:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG and WEBP images are supported")
+
+    # 2. Upload to Cloudinary
+    try:
+        new_url = cloudinary_service.upload_image(file.file, folder=f"org_{current_user.org_id}/logo")
+        if not new_url:
+            raise HTTPException(status_code=500, detail="Cloudinary upload failed")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save image: {str(e)}")
+
+    # 3. Update Organization Record
+    stmt = select(Organization).where(Organization.id == current_user.org_id)
+    org = (await db.execute(stmt)).scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+        
+    org.logo_url = new_url
+    await db.commit()
+
+    return {"logo_url": new_url, "message": "Logo updated successfully"}
