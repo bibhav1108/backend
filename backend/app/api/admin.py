@@ -7,6 +7,7 @@ from backend.app.api.deps import get_current_user
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime
+from backend.app.services.email_service import email_service
 
 router = APIRouter()
 
@@ -254,6 +255,9 @@ async def approve_organization(
     org.status = NGOVerificationStatus.APPROVED
     await db.commit()
     
+    # Send Notification Email
+    await email_service.send_ngo_approval_email(org.contact_email, org.name)
+    
     return {"message": f"Organization '{org.name}' has been approved and activated."}
 
 @router.post("/organizations/{org_id}/reject")
@@ -273,5 +277,8 @@ async def reject_organization(
         
     org.status = NGOVerificationStatus.REJECTED
     await db.commit()
+    
+    # Send Notification Email
+    await email_service.send_ngo_rejection_email(org.contact_email, org.name)
     
     return {"message": "Organization registration has been rejected."}

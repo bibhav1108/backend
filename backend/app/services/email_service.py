@@ -127,5 +127,67 @@ class EmailService:
         """
         await self.send_email(email, subject, html)
 
+    async def send_ngo_approval_email(self, email: str, org_name: str):
+        """Notifies an NGO that their registration has been approved."""
+        subject = f"Registration Approved: Welcome to {settings.EMAILS_FROM_NAME}!"
+        html = f"""
+        <html>
+            <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; background-color: #f9f9f9; padding: 40px;">
+                <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eef2f6;">
+                    <div style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); padding: 40px 20px; text-align: center; color: white;">
+                        <h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">Congratulations! 🚀</h1>
+                    </div>
+                    <div style="padding: 40px;">
+                        <p style="font-size: 18px; margin-top: 0;">Hello <strong>{org_name}</strong>,</p>
+                        <p style="line-height: 1.8; font-size: 16px;">We are thrilled to inform you that your registration on <strong>{settings.EMAILS_FROM_NAME}</strong> has been reviewed and <strong>approved</strong> by our administrative team!</p>
+                        <p style="line-height: 1.8; font-size: 16px;">Your organization is now live on the platform. You can now start creating campaigns, managing volunteers, and tracking your impact through your dashboard.</p>
+                        <div style="text-align: center; margin: 40px 0;">
+                            <a href="{settings.FRONTEND_URL}/login" style="background-color: #007bff; color: white; padding: 15px 35px; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 10px rgba(0,123,255,0.3);">Access Your Dashboard</a>
+                        </div>
+                        <p style="font-size: 14px; color: #666; font-style: italic;">Thank you for partnering with us to simplify social impact.</p>
+                        <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+                        <p style="font-size: 12px; color: #999; text-align: center; margin: 0;">
+                            Best regards,<br>
+                            <strong>The {settings.EMAILS_FROM_NAME} Team</strong>
+                        </p>
+                    </div>
+                </div>
+            </body>
+        </html>
+        """
+        await self.send_email(email, subject, html)
+
+    async def send_ngo_rejection_email(self, email: str, org_name: str):
+        """Notifies an NGO that their registration has been rejected."""
+        subject = f"Update regarding your registration - {settings.EMAILS_FROM_NAME}"
+        html = f"""
+        <html>
+            <body style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; background-color: #fff5f5; padding: 40px;">
+                <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #fecaca;">
+                    <div style="background: #ef4444; padding: 40px 20px; text-align: center; color: white;">
+                        <h1 style="margin: 0; font-size: 24px; font-weight: 800;">Registration Status Update</h1>
+                    </div>
+                    <div style="padding: 40px;">
+                        <p style="font-size: 18px; margin-top: 0;">Hello <strong>{org_name}</strong>,</p>
+                        <p style="line-height: 1.8; font-size: 16px;">Thank you for your interest in joining <strong>{settings.EMAILS_FROM_NAME}</strong>. After carefully reviewing your application and documents, we are unable to approve your registration at this time.</p>
+                        <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 20px; margin: 25px 0; border-radius: 4px;">
+                            <p style="margin: 0; font-size: 14px; color: #991b1b; font-weight: 600;">Reason: Information mismatch or insufficient documentation.</p>
+                        </div>
+                        <p style="line-height: 1.8; font-size: 16px;">You can log in to your account to review the errors or re-upload the necessary documents for a fresh review.</p>
+                        <div style="text-align: center; margin: 40px 0;">
+                            <a href="{settings.FRONTEND_URL}/login" style="background-color: #333; color: white; padding: 15px 35px; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 16px; display: inline-block;">Update Registration</a>
+                        </div>
+                        <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+                        <p style="font-size: 12px; color: #999; text-align: center; margin: 0;">
+                            Best regards,<br>
+                            <strong>The {settings.EMAILS_FROM_NAME} Support Team</strong>
+                        </p>
+                    </div>
+                </div>
+            </body>
+        </html>
+        """
+        await self.send_email(email, subject, html)
+
 # Singleton instance
 email_service = EmailService()
