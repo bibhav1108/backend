@@ -7,6 +7,7 @@ from backend.app.api.deps import get_current_user
 from pydantic import BaseModel, EmailStr
 from typing import List, Optional
 from datetime import datetime
+from sqlalchemy.orm import selectinload
 from backend.app.services.email_service import email_service
 
 router = APIRouter()
@@ -243,7 +244,7 @@ async def approve_organization(
     admin: User = Depends(require_admin)
 ):
     """Approve a pending organization."""
-    stmt = select(Organization).where(Organization.id == org_id)
+    stmt = select(Organization).where(Organization.id == org_id).options(selectinload(Organization.users))
     org = (await db.execute(stmt)).scalar_one_or_none()
     
     if not org:
@@ -255,8 +256,11 @@ async def approve_organization(
     org.status = NGOVerificationStatus.APPROVED
     await db.commit()
     
-    # Send Notification Email
-    await email_service.send_ngo_approval_email(org.contact_email, org.name)
+    # Send Notification Email to the NGO Admin specifically
+    admin_user = next((u for u in org.users if u.role == UserRole.NGO_ADMIN), None)
+    recipient = admin_user.email if admin_user else org.contact_email
+    
+    await email_service.send_ngo_approval_email(recipient, org.name)
     
     return {"message": f"Organization '{org.name}' has been approved and activated."}
 
@@ -267,9 +271,7 @@ async def reject_organization(
     admin: User = Depends(require_admin)
 ):
     """Reject/Delete a pending organization."""
-    # For now, we delete the record if it's pending. 
-    # In a real app, you might want to mark it as 'rejected' instead.
-    stmt = select(Organization).where(Organization.id == org_id)
+    stmt = select(Organization).where(Organization.id == org_id).options(selectinload(Organization.users))
     org = (await db.execute(stmt)).scalar_one_or_none()
     
     if not org:
@@ -278,7 +280,10 @@ async def reject_organization(
     org.status = NGOVerificationStatus.REJECTED
     await db.commit()
     
-    # Send Notification Email
-    await email_service.send_ngo_rejection_email(org.contact_email, org.name)
+    # Send Notification Email to the NGO Admin specifically
+    admin_user = next((u for u in org.users if u.role == UserRole.NGO_ADMIN), None)
+    recipient = admin_user.email if admin_user else org.contact_email
+    
+    await email_service.send_ngo_rejection_email(recipient, org.name)
     
     return {"message": "Organization registration has been rejected."}
