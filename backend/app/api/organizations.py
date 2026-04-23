@@ -59,6 +59,9 @@ class PublicOrganizationRead(BaseModel):
 class OrganizationUpdate(BaseModel):
     about: Optional[str] = None
     website_url: Optional[str] = None
+    ngo_type: Optional[str] = None
+    office_address: Optional[str] = None
+    contact_phone: Optional[str] = None
 
 class NGORegistrationResponse(BaseModel):
     org_id: int
@@ -205,6 +208,12 @@ async def update_my_organization(
         org.about = data.about
     if data.website_url is not None:
         org.website_url = data.website_url
+    if data.ngo_type is not None:
+        org.ngo_type = data.ngo_type
+    if data.office_address is not None:
+        org.office_address = data.office_address
+    if data.contact_phone is not None:
+        org.contact_phone = data.contact_phone
         
     await db.commit()
     await db.refresh(org)
