@@ -120,8 +120,8 @@ async def onboard_ngo(
         # Check if we are updating an existing DRAFT
         org_stmt = select(Organization).where(Organization.id == current_user.org_id)
         existing_org = (await db.execute(org_stmt)).scalar_one_or_none()
-        if not existing_org or existing_org.status != NGOVerificationStatus.DRAFT:
-            raise HTTPException(status_code=400, detail="User is already associated with a verified organization.")
+        if not existing_org or existing_org.status not in [NGOVerificationStatus.DRAFT, NGOVerificationStatus.REJECTED]:
+            raise HTTPException(status_code=400, detail="User is already associated with an active or pending organization.")
         new_org = existing_org
     else:
         # Check Org Uniqueness (Only for new orgs)
