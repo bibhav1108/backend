@@ -189,5 +189,35 @@ class EmailService:
         """
         await self.send_email(email, subject, html)
 
+    async def send_admin_new_ngo_notification(self, org_name: str, org_email: str):
+        """Notifies the System Admin that a new NGO has submitted for verification."""
+        subject = f"🚨 New NGO Verification Request: {org_name}"
+        html = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f7f9; padding: 40px;">
+                <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid #e1e8ed;">
+                    <div style="background: #2c3e50; padding: 25px; text-align: center; color: white;">
+                        <h2 style="margin: 0; font-size: 20px;">System Administrator Alert</h2>
+                    </div>
+                    <div style="padding: 30px;">
+                        <p style="font-size: 16px; margin-top: 0;">A new organization has submitted details for <strong>verification</strong>.</p>
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                            <p style="margin: 5px 0;"><strong>🏢 Organization:</strong> {org_name}</p>
+                            <p style="margin: 5px 0;"><strong>📧 Contact Email:</strong> {org_email}</p>
+                        </div>
+                        <p style="font-size: 14px; color: #555;">Please log in to the administrative portal to review their documents and finalize the approval process.</p>
+                        <div style="text-align: center; margin: 30px 0;">
+                            <a href="{settings.FRONTEND_URL}/admin/organizations" style="background: #007bff; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">Review Application</a>
+                        </div>
+                        <p style="font-size: 12px; color: #999; text-align: center; margin-top: 40px; border-top: 1px solid #eee; padding-top: 20px;">
+                            This is an automated system notification.
+                        </p>
+                    </div>
+                </div>
+            </body>
+        </html>
+        """
+        await self.send_email(settings.ADMIN_EMAIL, subject, html)
+
 # Singleton instance
 email_service = EmailService()

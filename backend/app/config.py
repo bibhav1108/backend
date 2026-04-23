@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     BREVO_API_KEY: Optional[str] = None
     EMAILS_FROM_EMAIL: Optional[str] = None
     EMAILS_FROM_NAME: str = "SahyogSync"
+    ADMIN_EMAIL: str = "sahyogsync.alerts@gmail.com"
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod

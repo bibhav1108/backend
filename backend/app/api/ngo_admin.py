@@ -13,6 +13,7 @@ from pydantic import field_validator
 from backend.app.models import NGOType, NGOVerificationStatus, AdminIDProofType, NGODocument
 from backend.app.services.cloudinary_service import upload_image
 from fastapi import UploadFile, File, Form
+from backend.app.services.email_service import email_service
 
 router = APIRouter()
 
@@ -273,6 +274,9 @@ async def submit_for_verification(
     
     org.status = NGOVerificationStatus.VERIFICATION_REQUESTED
     await db.commit()
+    
+    # Notify Admin
+    await email_service.send_admin_new_ngo_notification(org.name, org.contact_email)
     
     return {
         "status": org.status,
