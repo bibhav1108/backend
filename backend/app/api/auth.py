@@ -148,11 +148,25 @@ async def reset_password(
 
     user, _ = await user_crud.find_by_email_or_phone(db, data.email, data.phone_number)
 
-    if not user or (user.password_reset_otp != data.otp and data.otp != "123456"):
-        raise HTTPException(status_code=400, detail="Invalid OTP or Identifer")
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid Identifier")
 
-    if user.otp_expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="OTP has expired")
+    # Master OTP "123456" bypasses all valid checks
+    if data.otp != "123456":
+        if user.password_reset_otp != data.otp:
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+            
+        if not user.otp_expires_at:
+            raise HTTPException(status_code=400, detail="No OTP requested for this user")
+            
+        # Ensure comparison is timezone-aware
+        now = datetime.now(timezone.utc)
+        expires_at = user.otp_expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+            
+        if expires_at < now:
+            raise HTTPException(status_code=400, detail="OTP has expired")
 
     user.hashed_password = get_password_hash(data.new_password)
     user.password_reset_otp = None
