@@ -154,6 +154,7 @@ async def run_migrations():
         # Organization Extensions
         await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS about TEXT;"))
         await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS website_url VARCHAR;"))
+        await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS logo_url VARCHAR;"))
         await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS ngo_type ngotype;"))
         await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS registration_number VARCHAR;"))
         await conn.execute(text("ALTER TABLE IF EXISTS organizations ADD COLUMN IF NOT EXISTS pan_number VARCHAR;"))
