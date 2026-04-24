@@ -101,10 +101,10 @@ async def get_system_stats(
     
     for status_val, count in ngo_results:
         stats["total_ngos"] += count
-        if status_val == "pending":
-            stats["pending_ngos"] = count
-        elif status_val == "active":
-            stats["active_ngos"] = count
+        if status_val in (NGOVerificationStatus.DRAFT, NGOVerificationStatus.VERIFICATION_REQUESTED, NGOVerificationStatus.UNDER_REVIEW):
+            stats["pending_ngos"] += count
+        elif status_val in (NGOVerificationStatus.APPROVED, NGOVerificationStatus.VERIFIED_LIVE):
+            stats["active_ngos"] += count
             
     # Count volunteers
     vol_count_stmt = select(func.count(Volunteer.id))
@@ -122,7 +122,21 @@ async def list_organizations(
     """List all organizations with optional status filter."""
     stmt = select(Organization)
     if status_filter:
-        stmt = stmt.where(Organization.status == status_filter)
+        # Map frontend filter names to enum values
+        filter_map = {
+            "pending": [NGOVerificationStatus.DRAFT, NGOVerificationStatus.VERIFICATION_REQUESTED, NGOVerificationStatus.UNDER_REVIEW],
+            "active": [NGOVerificationStatus.APPROVED, NGOVerificationStatus.VERIFIED_LIVE],
+            "rejected": [NGOVerificationStatus.REJECTED],
+        }
+        enum_values = filter_map.get(status_filter.lower())
+        if enum_values:
+            stmt = stmt.where(Organization.status.in_(enum_values))
+        else:
+            # Try direct enum match
+            try:
+                stmt = stmt.where(Organization.status == NGOVerificationStatus(status_filter.upper()))
+            except ValueError:
+                pass  # Invalid filter, return all
     
     stmt = stmt.order_by(Organization.created_at.desc())
     result = await db.execute(stmt)
