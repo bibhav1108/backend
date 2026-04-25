@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
-    POSTGRES_DB: str = "sahyog_setu"
+    POSTGRES_DB: str = "sahyog_sync"
     DATABASE_URL: Optional[str] = None
 
     # Security Settings

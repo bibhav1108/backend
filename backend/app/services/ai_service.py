@@ -24,9 +24,14 @@ class AIService:
             self.parser = JsonOutputParser()
             self.prompt = ChatPromptTemplate.from_messages([
                 ("system", (
-                    "You are a logistics assistant for Sahyog Setu, an NGO platform. "
+                    "You are a logistics assistant for SahyogSync, an NGO platform. "
                     "Extract donation details from the user's text into a strict JSON format. "
-                    "\n\n### Fields to Extract:\n"
+                    "\n\n### Rules:\n"
+                    "- If the user mentions multiple DIFFERENT items (e.g. '10kg Rice and 5kg Dal'), return a JSON LIST of objects.\n"
+                    "- If only one item is mentioned, return a single JSON object.\n"
+                    "- Smartly handle units: Standardize to lowercase (kg, ltr, packets, units). Fix typos like 'kgs', 'kg's', 'kilograms' -> 'kg'. Fix 'litres', 'ltrs', 'liters' -> 'ltr'.\n"
+                    "- Ensure proper formatting: Always include a single space between the number and unit (e.g., '10kg' becomes '10 kg'). If a unit is missing but obvious from context, add it (e.g., '10 rice' -> '10 kg').\n\n"
+                    "### Fields to Extract:\n"
                     "- item: The specific item being donated (e.g., 'Rice', 'Blankets').\n"
                     "- quantity: The amount (e.g., '10kg', '5 packets').\n"
                     "- location: The pickup address or area mentioned.\n"
@@ -36,9 +41,12 @@ class AIService:
                     "### Examples:\n"
                     "1. Input: 'I have 10kg dal at Sector 62, Noida. It is quite fresh.'\n"
                     "   Output: {{\"item\": \"Dal\", \"quantity\": \"10kg\", \"location\": \"Sector 62, Noida\", \"category\": \"FOOD\", \"urgency\": \"MEDIUM\", \"notes\": \"Quite fresh\"}}\n\n"
-                    "2. Input: 'URGENT: Need someone to pick up 5 medical kits immediately from Red Cross office.'\n"
-                    "   Output: {{\"item\": \"Medical Kits\", \"quantity\": \"5\", \"location\": \"Red Cross office\", \"category\": \"MEDICAL\", \"urgency\": \"HIGH\", \"notes\": \"Immediate pickup requested\"}}\n\n"
-                    "Return ONLY the JSON object. If a field is missing, use 'N/A'."
+                    "2. Input: 'I have 20 kg's of rice and 30 kg wheat flour at jamuna bakery'\n"
+                    "   Output: [\n"
+                    "     {{\"item\": \"Rice\", \"quantity\": \"20 kg\", \"location\": \"jamuna bakery\", \"category\": \"FOOD\", \"urgency\": \"MEDIUM\", \"notes\": \"\"}},\n"
+                    "     {{\"item\": \"Wheat Flour\", \"quantity\": \"30 kg\", \"location\": \"jamuna bakery\", \"category\": \"FOOD\", \"urgency\": \"MEDIUM\", \"notes\": \"\"}}\n"
+                    "   ]\n\n"
+                    "Return ONLY the JSON. If a field is missing, use 'N/A'."
                 )),
                 ("human", "{text}")
             ])

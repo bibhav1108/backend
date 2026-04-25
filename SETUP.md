@@ -1,4 +1,4 @@
-# 🛠️ Sahyog Setu Backend Setup Guide
+# 🛠️ SahyogSync Backend Setup Guide
 
 Follow these steps to set up and run the FastAPI backend and database from scratch.
 
