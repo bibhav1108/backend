@@ -400,7 +400,7 @@ async def telegram_webhook(
                 existing = (await db.execute(stmt)).scalar_one_or_none()
                 
                 if existing:
-                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *You are already a registered volunteer!* Use /menu to see active missions.")
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="✅ *You are already a registered volunteer!* Use /start to see active missions.")
                 else:
                     onboard_msg = "🦁 *Onboarding Started!*\n\nTo join our mission, we need to verify your contact. Please share your phone number using the button below."
                     reply_kb = {
@@ -502,7 +502,7 @@ async def telegram_webhook(
                     "<b>4️⃣ Tracking Missions</b>\n"
                     "Use <b>/my_missions</b> to view your active pickups. Follow the navigation links to reach the donor and use the <b>6-digit code</b> to complete the collection.\n\n"
                     "━━━━━━━━━━━━━━━\n\n"
-                    "<b>💡 Pro Tip:</b> Use the <b>/menu</b> command at any time to get back to the main dashboard.\n\n"
+                    "<b>💡 Pro Tip:</b> Use the <b>/start</b> command at any time to get back to the main dashboard.\n\n"
                     "<i>Ready to make an impact? Let's go!</i> 🚀"
                 )
                 await send_and_log(bg=background_tasks, chat_id=chat_id, text=tutorial_msg, parse_mode="HTML")
@@ -579,7 +579,7 @@ async def telegram_webhook(
                         f"✅ *Account Already Linked!*\n\n"
                         f"Welcome back, *{creds['name']}*! Your Telegram is already linked to your SahyogSync account.\n\n"
                         f"👤 *Username*: `{creds['username']}`\n\n"
-                        f"You can now use `/menu` to explore active missions. If you've forgotten your password, please use the 'Forgot Password' link on our website. 🚀"
+                        f"You can now use `/start` to explore active missions. If you've forgotten your password, please use the 'Forgot Password' link on our website. 🚀"
                     )
                 else:
                     welcome_msg = (
@@ -602,7 +602,7 @@ async def telegram_webhook(
                 await send_and_log(bg=background_tasks, chat_id=chat_id, text=reject_msg)
                 return {"status": "rejected"}
 
-        if text == "/start" or text == "/menu":
+        if text == "/start":
             welcome_text = "🤝 *WELCOME TO SAHYOGSYNC*\n\nWe connect people, resources, and opportunities to create meaningful impact — not just aid, but real support. 🚀\n\n#SahyogSync"
             inline_kb = {"inline_keyboard": [[{"text": "🙋 Join Volunteer", "callback_data": "join_volunteer"}, {"text": "🎁 Donate Food", "callback_data": "donate_surplus"}]]}
             
@@ -672,7 +672,7 @@ async def telegram_webhook(
                 "<b>4️⃣ Tracking Missions</b>\n"
                 "Use <b>/my_missions</b> to view your active pickups. Follow the navigation links to reach the donor and use the <b>6-digit code</b> to complete the collection.\n\n"
                 "━━━━━━━━━━━━━━━\n\n"
-                "<b>💡 Pro Tip:</b> Use the <b>/menu</b> command at any time to get back to the main dashboard.\n\n"
+                "<b>💡 Pro Tip:</b> Use the <b>/start</b> command at any time to get back to the main dashboard.\n\n"
                 "<i>Ready to make an impact? Let's go!</i> 🚀"
             )
             await send_and_log(bg=background_tasks, chat_id=chat_id, text=tutorial_msg, parse_mode="HTML")
@@ -736,7 +736,7 @@ async def telegram_webhook(
             active = (await db.execute(stmt_m)).scalars().all()
             
             if not active:
-                await send_and_log(bg=background_tasks, chat_id=chat_id, text="🌟 *No Active Missions*: You're all caught up! Use /menu to find how you can help.")
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text="🌟 *No Active Missions*: You're all caught up! Use /start to find how you can help.")
             else:
                 missions_text = "👤 *Your Active Missions*:\n\n"
                 for i, d in enumerate(active, 1):
