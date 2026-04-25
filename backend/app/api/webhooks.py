@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, delete
 from sqlalchemy.orm import selectinload
 from backend.app.database import get_db, async_session
+from backend.app.config import settings
 from backend.app.models import (
     Volunteer, 
     MarketplaceDispatch, 
@@ -420,7 +421,7 @@ async def telegram_webhook(
                     await db.commit()
                     
                     # Link to the NEW Public Map Picker
-                    loc_picker_url = f"https://sahyog-setu-frontend.vercel.app/alert-location/{alert_id}"
+                    loc_picker_url = f"{settings.FRONTEND_URL}/alert-location/{alert_id}"
                     
                     loc_request_kb = {
                         "inline_keyboard": [
@@ -485,6 +486,51 @@ async def telegram_webhook(
                 except Exception as e:
                     print(f"[ERROR] Prompt OTP Handler Failed: {e}")
                     await send_and_log(bg=background_tasks, chat_id=chat_id, text="⚠️ *Error*: Unable to process request. Please try again later.")
+            
+            if data_payload == "help_tutorial":
+                # Trigger the tutorial logic (reusing existing message)
+                tutorial_msg = (
+                    "<b>📖 SahyogSync: User Guide</b>\n"
+                    "<i>Helping you navigate the platform with ease.</i>\n\n"
+                    "━━━━━━━━━━━━━━━\n\n"
+                    "<b>1️⃣ Getting Started</b>\n"
+                    "Use the <b>/start</b> command to open the main menu and choose your role: <b>Donor</b> or <b>Volunteer</b>.\n\n"
+                    "<b>2️⃣ Donating Resources</b>\n"
+                    "Click on <b>🎁 Donate Food</b> and send us a message with the details (Item, Quantity, Location). Our <b>AI</b> will automatically parse and summarize your report for confirmation.\n\n"
+                    "<b>3️⃣ Joining as a Volunteer</b>\n"
+                    "Click <b>🙋 Join Volunteer</b> and share your contact for verification. Once approved, you can start accepting pickup missions in your area.\n\n"
+                    "<b>4️⃣ Tracking Missions</b>\n"
+                    "Use <b>/my_missions</b> to view your active pickups. Follow the navigation links to reach the donor and use the <b>6-digit code</b> to complete the collection.\n\n"
+                    "━━━━━━━━━━━━━━━\n\n"
+                    "<b>💡 Pro Tip:</b> Use the <b>/menu</b> command at any time to get back to the main dashboard.\n\n"
+                    "<i>Ready to make an impact? Let's go!</i> 🚀"
+                )
+                await send_and_log(bg=background_tasks, chat_id=chat_id, text=tutorial_msg, parse_mode="HTML")
+                return {"status": "callback_handled"}
+
+            if data_payload == "help_leaderboard":
+                # Redirect to leaderboard logic (triggering the command logic)
+                # To keep it simple, we tell the user to use the command or we could fetch data here.
+                # Let's just fetch the data directly like in the /leaderboard command.
+                stmt_lb = (
+                    select(Volunteer.name, VolunteerStats.completions)
+                    .join(VolunteerStats)
+                    .where(VolunteerStats.completions > 0)
+                    .order_by(desc(VolunteerStats.completions))
+                    .limit(5)
+                )
+                top_vols = (await db.execute(stmt_lb)).all()
+                
+                if not top_vols:
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text="🏆 <b>Leaderboard</b>: No missions completed yet. Be the first hero! 🦸‍♂️", parse_mode="HTML")
+                else:
+                    lb_text = "🏆 <b>SAHYOGSYNC TOP HEROES</b> 🏆\n\n"
+                    for i, (name, count) in enumerate(top_vols, 1):
+                        icon = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "✨"
+                        lb_text += f"{icon} <b>{name}</b>: {count} Missions\n"
+                    lb_text += "\nKeep up the great work! 🌍🤝"
+                    await send_and_log(bg=background_tasks, chat_id=chat_id, text=lb_text, parse_mode="HTML")
+                return {"status": "callback_handled"}
             
             return {"status": "callback_handled"}
 
@@ -557,7 +603,7 @@ async def telegram_webhook(
                 return {"status": "rejected"}
 
         if text == "/start" or text == "/menu":
-            welcome_text = "🤝 *WELCOME TO SAHYOGSYNC*\n\nWe connect extra food to people who need it. How can we help you today? 🌍"
+            welcome_text = "🤝 *WELCOME TO SAHYOGSYNC*\n\nWe connect people, resources, and opportunities to create meaningful impact — not just aid, but real support. 🚀\n\n#SahyogSync"
             inline_kb = {"inline_keyboard": [[{"text": "🙋 Join Volunteer", "callback_data": "join_volunteer"}, {"text": "🎁 Donate Food", "callback_data": "donate_surplus"}]]}
             
             # --- Fail-Safe Experience ---
@@ -586,64 +632,69 @@ async def telegram_webhook(
 
         if text == "/help":
             help_msg = (
-                "🤖 **SahyogSync Help Center**\n\n"
-                "---\n\n"
-                "📜 **Commands & Usage**\n\n"
-                "/start → Start the bot & Main Menu\n"
-                "/help → Open help section\n"
-                "/tutorial → View step-by-step guide\n"
-                "/donate → Contribute resources\n\n"
-                "👤 **Volunteer Task List**\n"
-                "/my_missions → Donation Pickups (Speed Layer)\n"
-                "/my_campaigns → Mass Missions (NGO Initiatives)\n"
-                "/cancel → Cancel active pickup\n\n"
-                "/about → Learn about SahyogSync\n\n"
-                "---\n\n"
-                "📞 **Customer Support**\n\n"
-                "For any issues or assistance:\n\n"
-                "📧 Email: [i.e.ishantiwari@gmail.com](mailto:i.e.ishantiwari@gmail.com)\n"
-                "📱 Telegram: @Ishantiwariii\n"
-                "🕒 Response Time: Within 24 hours\n\n"
-                "---\n\n"
-                "Thank you for using SahyogSync."
+                "<b>🤖 SahyogSync Assistant</b>\n"
+                "<i>Powering the Right Help, at the Right Time.</i>\n\n"
+                "Hi! I am here to guide you. Choose a category below or use the commands.\n\n"
+                "<b>📜 Quick Links:</b>\n"
+                "• /tutorial - Step-by-step guide\n"
+                "• /leaderboard - Top Heroes\n"
+                "• /about - Our Mission\n\n"
+                "<b>📞 Support:</b>\n"
+                "For any issues, reach out to us at:\n"
+                "📧 <code>sahyogsync.alerts@gmail.com</code>\n\n"
+                "🕒 <i>Response Time: Within 24 hours</i>"
             )
-            await send_and_log(bg=background_tasks, chat_id=chat_id, text=help_msg)
+            inline_kb = {
+                "inline_keyboard": [
+                    [
+                        {"text": "📖 View Tutorial", "callback_data": "help_tutorial"},
+                        {"text": "🏆 Leaderboard", "callback_data": "help_leaderboard"}
+                    ],
+                    [
+                        {"text": "🌐 Visit Website", "url": settings.FRONTEND_URL}
+                    ]
+                ]
+            }
+            await send_and_log(bg=background_tasks, chat_id=chat_id, text=help_msg, reply_markup=inline_kb, parse_mode="HTML")
             return {"status": "help_sent"}
 
         if text == "/tutorial":
             tutorial_msg = (
-                "📘 **SahyogSync Tutorial**\n\n"
-                "Follow these simple steps to get started:\n\n"
-                "---\n\n"
-                "1️⃣ **Start the Bot**\n"
-                "Use /start to begin and open the main menu.\n\n"
-                "2️⃣ **Select Your Role**\n"
-                "Choose whether you are a Volunteer or a Donor.\n\n"
-                "3️⃣ **Choose an Action**\n"
-                "• Donate extra food resources\n"
-                "• Join as a Volunteer for missions\n\n"
-                "4️⃣ **Provide Details**\n"
-                "Enter required information like item details and your location.\n\n"
-                "5️⃣ **Submit & Track**\n"
-                "Submit your report and use `/my_missions` for pickups or `/my_campaigns` for mass missions.\n\n"
-                "---\n\n"
-                "💡 Tip: Use the menu buttons for faster and easier navigation.\n\n"
-                "---\n\n"
-                "You're all set to use SahyogSync 🚀"
+                "<b>📖 SahyogSync: User Guide</b>\n"
+                "<i>Helping you navigate the platform with ease.</i>\n\n"
+                "━━━━━━━━━━━━━━━\n\n"
+                "<b>1️⃣ Getting Started</b>\n"
+                "Use the <b>/start</b> command to open the main menu and choose your role: <b>Donor</b> or <b>Volunteer</b>.\n\n"
+                "<b>2️⃣ Donating Resources</b>\n"
+                "Click on <b>🎁 Donate Food</b> and send us a message with the details (Item, Quantity, Location). Our <b>AI</b> will automatically parse and summarize your report for confirmation.\n\n"
+                "<b>3️⃣ Joining as a Volunteer</b>\n"
+                "Click <b>🙋 Join Volunteer</b> and share your contact for verification. Once approved, you can start accepting pickup missions in your area.\n\n"
+                "<b>4️⃣ Tracking Missions</b>\n"
+                "Use <b>/my_missions</b> to view your active pickups. Follow the navigation links to reach the donor and use the <b>6-digit code</b> to complete the collection.\n\n"
+                "━━━━━━━━━━━━━━━\n\n"
+                "<b>💡 Pro Tip:</b> Use the <b>/menu</b> command at any time to get back to the main dashboard.\n\n"
+                "<i>Ready to make an impact? Let's go!</i> 🚀"
             )
-            await send_and_log(bg=background_tasks, chat_id=chat_id, text=tutorial_msg)
+            await send_and_log(bg=background_tasks, chat_id=chat_id, text=tutorial_msg, parse_mode="HTML")
             return {"status": "tutorial_sent"}
         if text == "/about":
             about_msg = (
-                "🌍 *About SahyogSync*\n\n"
-                "SahyogSync (formerly Sahyog Setu) is an AI-powered coordination platform "
-                "designed to bridge the gap between surplus resources and those in need.\n\n"
-                "🚀 *Our Mission*: To automate disaster relief and daily recovery operations "
-                "using state-of-the-art AI, ensuring that no resource goes to waste and every "
-                "hero can contribute effectively.\n\n"
-                "🏗️ *Built with ❤️ for a better tomorrow.*"
+                "<b>🌍 About SahyogSync</b>\n\n"
+                "SahyogSync is a platform built to <b>connect people, resources, and intent</b> — making support more <b>organized</b>, <b>accessible</b>, and <b>impactful</b>.\n\n"
+                "━━━━━━━━━━━━━━━\n\n"
+                "<b>🚀 What We Do</b>\n"
+                "We bridge the gap between <b>those who want to help</b> and <b>those who need support</b> — ensuring that resources reach the right place at the right time.\n\n"
+                "━━━━━━━━━━━━━━━\n\n"
+                "<b>🤝 Our Vision</b>\n"
+                "To create a system where help is not random, but <b>structured</b>, <b>efficient</b>, and <b>meaningful</b>.\n\n"
+                "━━━━━━━━━━━━━━━\n\n"
+                "<b>💡 Why SahyogSync?</b>\n"
+                "Because impact isn’t just about giving — it’s about <b>delivering the right support, in the right way</b>.\n\n"
+                "━━━━━━━━━━━━━━━\n\n"
+                "<i>Together, we turn intent into impact.</i>\n"
+                "<b>#SahyogSync</b>"
             )
-            await send_and_log(bg=background_tasks, chat_id=chat_id, text=about_msg)
+            await send_and_log(bg=background_tasks, chat_id=chat_id, text=about_msg, parse_mode="HTML")
             return {"status": "about_sent"}
 
         if text == "/leaderboard":
@@ -721,7 +772,7 @@ async def telegram_webhook(
                 await send_and_log(bg=background_tasks, chat_id=chat_id, text="ℹ️ *No Campaigns*: You haven't joined any mass missions yet. Watch for broadcasts! 📢")
             else:
                 campaign_msg = "🎭 *Your Mass Missions (Campaigns)*\n\n"
-                base_url = "https://sahyog-setu-frontend.vercel.app/missions"
+                base_url = f"{settings.FRONTEND_URL}/missions"
                 for p in participations:
                     status_icon = "✅" if p.status == CampaignParticipationStatus.APPROVED else "⏳"
                     if p.status == CampaignParticipationStatus.REJECTED: status_icon = "❌"

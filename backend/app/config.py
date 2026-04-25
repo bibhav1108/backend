@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     
     # CORS & Web Linking
-    ALLOWED_ORIGINS: Union[List[str], str] = ["https://sahyog-setu-frontend.vercel.app", "http://localhost:3000", "http://localhost:5173", "http://localhost:5174"]
-    FRONTEND_URL: str = "https://sahyog-setu-frontend.vercel.app"
+    ALLOWED_ORIGINS: Union[List[str], str] = ["https://sahyog-sync-frontend.vercel.app", "http://localhost:3000", "http://localhost:5173", "http://localhost:5174"]
+    FRONTEND_URL: str = "https://sahyog-sync-frontend.vercel.app"
     BACKEND_URL: str = "https://sahyogsync.onrender.com"
     
     # Cloudinary Settings
